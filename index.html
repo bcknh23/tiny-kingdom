@@ -1,0 +1,1823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Tiny Kingdom</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@700;800&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout: full-screen 3D island; parchment HUD pinned top (resources) and bottom (build bar); info sheet on the right (bottom on phones). Single parchment look by design. */
+:root {
+  --sky: #a9d8ee;
+  --parch: #f6ecd2;
+  --parch-2: #eadcb6;
+  --ink: #3a2a1a;
+  --ink-soft: #77624a;
+  --edge: #6b4a2b;
+  --red: #b23a2e;
+  --gold: #d9a72b;
+  --green: #3f7d33;
+  --wood: #9a6434;
+  --stone: #8b8984;
+  --food: #d9a33a;
+  --coin: #e2b52f;
+  --people: #4e74b8;
+  --shadow: rgba(58, 42, 26, .28);
+  --font-display: "Alegreya SC", Georgia, "Times New Roman", serif;
+  --font-body: "Alegreya Sans", "Trebuchet MS", system-ui, sans-serif;
+  --bar-h: 112px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  background: var(--sky);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+#view { position: fixed; inset: 0; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+
+button { font: inherit; color: inherit; }
+button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
+.paper {
+  background: var(--parch);
+  border: 2px solid var(--edge);
+  border-radius: 10px;
+  box-shadow: 0 3px 0 var(--edge), 0 10px 24px var(--shadow);
+}
+
+/* ---------- top bar ---------- */
+.top {
+  position: fixed; top: 0; left: 0; right: 0;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 10px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between;
+  pointer-events: none;
+}
+.top > * { pointer-events: auto; }
+.crest { padding: 6px 12px 8px; min-width: 0; }
+.crest h1 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 22px; line-height: 1.1; letter-spacing: .02em; }
+.tier { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-soft); }
+.tier b { color: var(--red); font-family: var(--font-display); font-size: 15px; letter-spacing: .04em; }
+.prog { width: 110px; height: 7px; border-radius: 4px; background: var(--parch-2); border: 1px solid var(--edge); overflow: hidden; }
+.prog i { display: block; height: 100%; width: 0; background: var(--gold); transition: width .4s; }
+
+.res { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; }
+.chip { display: grid; grid-template-columns: auto auto; column-gap: 6px; align-items: center; padding: 3px 9px 3px 6px; border-radius: 8px; background: var(--parch-2); min-width: 74px; }
+.chip svg { grid-row: span 2; width: 20px; height: 20px; }
+.chip .amt { font-weight: 700; font-size: 17px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.chip .rate { font-size: 12px; line-height: 1.1; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.chip .rate.up { color: var(--green); }
+.chip .rate.down { color: var(--red); font-weight: 700; }
+.chip.warn { background: #f4c9bd; }
+.menu-btn { padding: 8px 14px; cursor: pointer; font-weight: 700; }
+.clock { display: flex; align-items: center; gap: 5px; font-size: 14px; color: var(--ink-soft); margin-top: 2px; }
+.clock svg { width: 16px; height: 16px; }
+
+/* ---------- build bar ---------- */
+.bottom {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  pointer-events: none;
+}
+.bar { pointer-events: auto; display: flex; gap: 8px; overflow-x: auto; padding: 8px; scrollbar-width: thin; }
+.card {
+  flex: 0 0 auto; width: 112px; min-height: 80px;
+  display: grid; align-content: start; gap: 3px; text-align: left;
+  padding: 6px 8px 7px; border-radius: 8px;
+  background: var(--parch-2); border: 2px solid transparent; cursor: pointer;
+  position: relative;
+}
+.card:hover { border-color: var(--ink-soft); }
+.card.on { border-color: var(--red); background: #fff6df; }
+.card .nm { font-weight: 700; font-size: 15px; line-height: 1.1; }
+.card .key { position: absolute; top: 5px; right: 7px; font-size: 11px; color: var(--ink-soft); }
+.cost { display: flex; flex-wrap: wrap; gap: 2px 7px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.cost span { display: inline-flex; align-items: center; gap: 3px; }
+.cost span.short { color: var(--red); font-weight: 700; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; border: 1px solid rgba(0,0,0,.25); }
+.card .lock { font-size: 13px; color: var(--ink-soft); }
+.card.locked { opacity: .6; cursor: default; }
+.card.expand { background: #e5ecd0; }
+.card .sub { font-size: 12px; color: var(--ink-soft); line-height: 1.15; }
+
+/* ---------- side sheet ---------- */
+.side {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: 120px;
+  width: 290px; max-height: calc(100% - 120px - var(--bar-h) - 24px); overflow-y: auto;
+  padding: 12px 14px 14px; display: grid; gap: 8px;
+}
+.side h2 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 21px; line-height: 1.1; padding-right: 26px; }
+.side .lvl { color: var(--red); font-size: 14px; font-weight: 700; }
+.side p { margin: 0; line-height: 1.35; }
+.side ul { margin: 0; padding-left: 18px; line-height: 1.45; }
+.side .close { position: absolute; top: 8px; right: 8px; border: 0; background: none; font-size: 20px; cursor: pointer; line-height: 1; padding: 4px 8px; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.btn {
+  border: 2px solid var(--edge); border-radius: 8px; background: var(--gold); color: var(--ink);
+  font-weight: 700; padding: 6px 12px; cursor: pointer; box-shadow: 0 2px 0 var(--edge);
+  display: inline-grid; gap: 1px; text-align: left;
+}
+.btn small { font-weight: 500; font-size: 12px; }
+.btn:active { transform: translateY(2px); box-shadow: none; }
+.btn.plain { background: var(--parch-2); }
+.btn.danger { background: #efc2b6; }
+.btn[disabled] { opacity: .55; cursor: default; transform: none; box-shadow: 0 2px 0 var(--edge); }
+.muted { color: var(--ink-soft); font-size: 14px; }
+
+/* ---------- toasts, tooltip, event ---------- */
+.toasts { position: fixed; left: 50%; transform: translateX(-50%); top: 140px; display: grid; gap: 6px; justify-items: center; pointer-events: none; width: min(420px, calc(100% - 32px)); }
+.toast { padding: 7px 14px; font-weight: 500; text-align: center; animation: pop .25s ease-out; }
+.toast.big { font-family: var(--font-display); font-size: 20px; font-weight: 800; background: #fff3c8; }
+@keyframes pop { from { transform: translateY(-6px); opacity: 0; } }
+.tip {
+  position: fixed; pointer-events: none; padding: 6px 10px; max-width: 240px;
+  font-size: 14px; line-height: 1.3; z-index: 5;
+}
+.tip b { display: block; font-size: 15px; }
+.tip .bad { color: var(--red); font-weight: 700; }
+.tip .good { color: var(--green); font-weight: 700; }
+.hint {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--bar-h) + 14px + env(safe-area-inset-bottom, 0px));
+  padding: 6px 12px; display: flex; gap: 10px; align-items: center; font-size: 15px; max-width: calc(100% - 32px);
+}
+.hint span { min-width: 0; }
+.event {
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); top: 150px; width: 270px;
+  padding: 12px 14px; display: grid; gap: 8px; animation: pop .3s ease-out;
+}
+.event h3 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 19px; }
+.event p { margin: 0; line-height: 1.35; }
+.timer { height: 4px; border-radius: 2px; background: var(--parch-2); overflow: hidden; }
+.timer i { display: block; height: 100%; background: var(--red); width: 100%; }
+
+/* ---------- overlays ---------- */
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px)); background: rgba(58, 42, 26, .35); }
+.dialog { width: min(440px, 100%); max-height: 100%; overflow-y: auto; padding: 18px 20px 20px; display: grid; gap: 12px; }
+.dialog h2 { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 28px; line-height: 1.05; }
+.dialog ol { margin: 0; padding-left: 22px; display: grid; gap: 6px; line-height: 1.4; }
+.dialog p { margin: 0; line-height: 1.4; }
+.loading { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; font-family: var(--font-display); font-size: 24px; color: var(--ink); }
+.loading small { display: block; font-family: var(--font-body); font-size: 15px; color: var(--ink-soft); max-width: 320px; margin-top: 6px; }
+
+@media (max-width: 700px) {
+  .crest h1 { font-size: 18px; }
+  .chip { min-width: 0; padding: 2px 7px 2px 5px; }
+  .chip .amt { font-size: 15px; }
+  .chip svg { width: 16px; height: 16px; }
+  .res { gap: 4px; padding: 4px; order: 3; width: 100%; justify-content: space-between; }
+  .chip { flex: 1 1 0; }
+  .chip .rate { font-size: 11px; }
+  .crest { flex: 1 1 0; }
+  #tierNext { display: none; }
+  .prog { width: 80px; }
+  .side { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: auto; bottom: calc(var(--bar-h) + 10px + env(safe-area-inset-bottom, 0px)); max-height: 45%; }
+  .event { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: auto; bottom: calc(var(--bar-h) + 10px + env(safe-area-inset-bottom, 0px)); }
+  .toasts { top: 150px; }
+  .card { width: 100px; }
+}
+@media (prefers-reduced-motion: reduce) { .toast, .event { animation: none; } .prog i { transition: none; } }
+</style>
+
+<div id="view"></div>
+<div class="loading" id="loading">Building your island…<small id="loadMsg">Loading the 3D engine.</small></div>
+
+<div class="top" id="top" hidden>
+  <div class="crest paper">
+    <h1>Tiny Kingdom</h1>
+    <div class="tier"><b id="tierName">Village</b><span class="prog"><i id="tierProg"></i></span><span id="tierNext">25 villagers to Town</span></div>
+    <div class="clock"><span id="clockIcon"></span><span id="clockText">Day 1, morning</span></div>
+  </div>
+  <div class="res paper" id="res"></div>
+  <button class="menu-btn paper" id="menuBtn" type="button">Menu</button>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<div class="tip paper" id="tip" hidden></div>
+<div class="hint paper" id="hint" hidden><span id="hintText"></span><button class="btn plain" id="cancelBuild" type="button">Done</button></div>
+<div class="side paper" id="side" hidden></div>
+<div class="event paper" id="event" hidden></div>
+
+<div class="bottom" id="bottom" hidden>
+  <div class="bar paper" id="bar"></div>
+</div>
+
+<div class="overlay" id="help" hidden>
+  <div class="dialog paper" role="dialog" aria-labelledby="helpTitle">
+    <h2 id="helpTitle">Welcome, ruler!</h2>
+    <p>Your island has a Town Hall and six villagers. Grow it into a mighty kingdom.</p>
+    <ol>
+      <li><b>Feed your people.</b> Villagers eat food. Build a <b>Farm</b> or a <b>Fishing Hut</b> first.</li>
+      <li><b>Gather materials.</b> Put <b>Lumber Mills</b> next to forests and <b>Quarries</b> next to hills. More neighbors means more output.</li>
+      <li><b>Build houses.</b> Houses let more villagers move in, and buildings need villagers to work.</li>
+      <li><b>Grow.</b> More villagers unlock new buildings. Expand your borders and upgrade buildings to keep going forever.</li>
+    </ol>
+    <p class="muted">Drag to turn the camera, scroll or pinch to zoom, right-drag or two-finger drag to move. Your kingdom saves by itself.</p>
+    <button class="btn" id="helpClose" type="button">Start building</button>
+  </div>
+</div>
+
+<div class="overlay" id="menu" hidden>
+  <div class="dialog paper" role="dialog" aria-labelledby="menuTitle">
+    <h2 id="menuTitle">Menu</h2>
+    <div class="btns">
+      <button class="btn plain" id="mHelp" type="button">How to play</button>
+      <button class="btn plain" id="mSound" type="button">Sound: on</button>
+      <button class="btn plain" id="mShadows" type="button">Shadows: on</button>
+      <button class="btn plain" id="mCycle" type="button">Day and night: on</button>
+    </div>
+    <p class="muted" id="statsLine"></p>
+    <div id="resetArea" class="btns">
+      <button class="btn danger" id="mReset" type="button">Start a new kingdom</button>
+    </div>
+    <button class="btn" id="menuClose" type="button">Back to my kingdom</button>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+  "simplex-noise": "https://cdn.jsdelivr.net/npm/simplex-noise@4.0.1/dist/esm/simplex-noise.js"
+} }
+</script>
+<script>
+  setTimeout(() => {
+    if (!window.__tkBooted) {
+      const m = document.getElementById("loadMsg");
+      if (m) m.textContent = "The 3D engine didn't load. Your network may block cdn.jsdelivr.net. Try another network or reload.";
+    }
+  }, 12000);
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createNoise2D } from "simplex-noise";
+
+window.__tkBooted = true;
+
+// =====================================================================
+// Constants and data
+// =====================================================================
+const SAVE_KEY = "tiny-kingdom-v1";
+const MAX_R = 19;            // largest radius of the world we generate
+const START_R = 4;           // starting border radius
+const LIMIT_R = MAX_R - 2;   // largest border radius you can expand to
+const SQ3 = Math.sqrt(3);
+const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+const EAT = 0.06, TAX = 0.03;
+const RES = ["wood", "stone", "food", "gold"];
+const RES_COLOR = { wood: "#9a6434", stone: "#8b8984", food: "#d9a33a", gold: "#e2b52f" };
+const TERRAIN_NAME = { water: "Water", sand: "Beach", grass: "Grassland", forest: "Forest", hill: "Hills", mountain: "Mountain" };
+
+const TIERS = [
+  { name: "Village", pop: 0 },
+  { name: "Town", pop: 25 },
+  { name: "City", pop: 80 },
+  { name: "Kingdom", pop: 200 },
+  { name: "Empire", pop: 500 },
+  { name: "Grand Empire", pop: 1000 },
+  { name: "Legendary Realm", pop: 2000 }
+];
+
+const DEFS = {
+  hall:      { name: "Town Hall",   tier: 0, cost: {}, workers: 0, on: [], buildable: false,
+               upCost: { wood: 40, stone: 30, gold: 20 },
+               desc: "The heart of your kingdom. Houses villagers and collects a little wood and gold." },
+  house:     { name: "House",       tier: 0, cost: { wood: 15 }, workers: 0, on: ["grass", "sand"],
+               desc: "Home for villagers. More villagers means more workers and more taxes." },
+  farm:      { name: "Farm",        tier: 0, cost: { wood: 20 }, workers: 2, on: ["grass"],
+               desc: "Grows food. A Windmill next to it makes it grow more." },
+  lumber:    { name: "Lumber Mill", tier: 0, cost: { wood: 12 }, workers: 2, on: ["grass"], adj: ["forest"],
+               desc: "Cuts wood. Each forest next to it adds more." },
+  quarry:    { name: "Quarry",      tier: 0, cost: { wood: 25 }, workers: 2, on: ["grass", "sand"], adj: ["hill", "mountain"],
+               desc: "Digs stone. Each hill or mountain next to it adds more." },
+  fish:      { name: "Fishing Hut", tier: 0, cost: { wood: 15 }, workers: 1, on: ["sand", "grass"], adj: ["water"],
+               desc: "Catches fish. Each water tile next to it adds more food." },
+  market:    { name: "Market",      tier: 1, cost: { wood: 40, stone: 30 }, workers: 2, on: ["grass", "sand"],
+               desc: "Makes gold. Each house next to it brings more shoppers." },
+  windmill:  { name: "Windmill",    tier: 1, cost: { wood: 50, stone: 20 }, workers: 1, on: ["grass"],
+               desc: "Boosts every farm next to it by 40%." },
+  well:      { name: "Well",        tier: 1, cost: { stone: 25 }, workers: 0, on: ["grass", "sand"],
+               desc: "Fresh water lets 3 more villagers live in each house next to it." },
+  smith:     { name: "Blacksmith",  tier: 1, cost: { wood: 60, stone: 60, gold: 20 }, workers: 3, on: ["grass", "sand"],
+               desc: "Better tools: +15% wood and stone for the whole kingdom." },
+  mine:      { name: "Gold Mine",   tier: 2, cost: { wood: 80, stone: 60 }, workers: 4, on: ["hill"],
+               desc: "Built into a hill. Digs gold, more with mountains next to it." },
+  harbor:    { name: "Harbor",      tier: 2, cost: { wood: 150, stone: 80, gold: 40 }, workers: 5, on: ["sand"], adj: ["water"],
+               desc: "Ships trade for gold and bring back food." },
+  cathedral: { name: "Cathedral",   tier: 2, cost: { stone: 300, gold: 150 }, workers: 4, on: ["grass"],
+               desc: "Inspires everyone: +10% to all resources." },
+  castle:    { name: "Castle",      tier: 3, cost: { wood: 400, stone: 800, gold: 500 }, workers: 10, on: ["grass", "hill"], unique: true,
+               desc: "The seat of a true ruler. +25% to all resources and room for 25 villagers." }
+};
+const BUILD_ORDER = ["house", "farm", "lumber", "quarry", "fish", "market", "windmill", "well", "smith", "mine", "harbor", "cathedral", "castle"];
+const MAX_LEVEL = 10;
+
+// =====================================================================
+// Helpers
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const key = (q, r) => q + "," + r;
+const hexDist = (q, r) => (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
+const toWorld = (q, r) => ({ x: SQ3 * (q + r / 2), z: 1.5 * r });
+const lvlMult = (l) => 1 + 0.6 * (l - 1);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function fmt(n) {
+  n = Math.max(0, n);
+  if (n < 1000) return String(Math.floor(n));
+  if (n < 1e6) return (n / 1e3).toFixed(n < 1e4 ? 1 : 0) + "k";
+  if (n < 1e9) return (n / 1e6).toFixed(n < 1e7 ? 1 : 0) + "M";
+  return (n / 1e9).toFixed(1) + "B";
+}
+function fmtRate(n) {
+  const a = Math.abs(n);
+  const s = a >= 100 ? a.toFixed(0) : a >= 10 ? a.toFixed(1) : a.toFixed(2);
+  return (n < 0 ? "−" : "+") + s + "/s";
+}
+function fmtTime(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h ? `${h}h ${m}m` : `${Math.max(1, m)}m`;
+}
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// =====================================================================
+// Game state
+// =====================================================================
+let G = null;            // saved state
+const tiles = new Map(); // key -> tile
+const tileList = [];     // index -> tile
+const buildings = [];    // live building objects
+let calc = { raw: { wood: 0, stone: 0, food: 0, gold: 0 }, cap: 0, jobs: 0, smith: 0, allMult: 1, rates: { wood: 0, stone: 0, food: 0, gold: 0 }, eff: 1 };
+
+function freshState(seed) {
+  return {
+    v: 1, seed, radius: START_R,
+    res: { wood: 50, stone: 10, food: 30, gold: 20 },
+    pop: 6, peakPop: 6,
+    buildings: [{ t: "hall", q: 0, r: 0, l: 1, d: 0 }],
+    nextEvent: 90, clock: 0, savedAt: Date.now(),
+    sound: true, shadows: true, seenHelp: false,
+    dayTime: 0.06, day: 1, cycle: true, seenNight: false
+  };
+}
+
+// =====================================================================
+// Terrain generation
+// =====================================================================
+function generateWorld(seed) {
+  const rand = mulberry32(seed);
+  const n1 = createNoise2D(rand), n2 = createNoise2D(rand);
+  const coords = [];
+  for (let q = -MAX_R; q <= MAX_R; q++) {
+    for (let r = Math.max(-MAX_R, -q - MAX_R); r <= Math.min(MAX_R, -q + MAX_R); r++) coords.push([q, r]);
+  }
+  coords.sort((a, b) => hexDist(...a) - hexDist(...b));
+  for (const [q, r] of coords) {
+    const { x, z } = toWorld(q, r);
+    const e = n1(x * 0.09, z * 0.09) * 0.62 + n1(x * 0.2, z * 0.2) * 0.28 + n1(x * 0.45, z * 0.45) * 0.1;
+    const m = n2(x * 0.14 + 40, z * 0.14 - 20);
+    let type;
+    if (e < -0.32) type = "water";
+    else if (e < -0.22) type = "sand";
+    else if (e < 0.33) type = m > 0.12 ? "forest" : "grass";
+    else if (e < 0.52) type = "hill";
+    else type = "mountain";
+    const t = { q, r, x, z, type, d: hexDist(q, r), idx: tileList.length, building: null, decor: [], jitter: rand() };
+    tiles.set(key(q, r), t);
+    tileList.push(t);
+  }
+  // A friendly start: grassy center with forest, hills and water nearby.
+  for (const t of tileList) if (t.d <= 1) t.type = "grass";
+  const near = tileList.filter(t => t.d >= 2 && t.d <= START_R);
+  const pick = (filter) => { const c = near.filter(filter); return c.length ? c[Math.floor(rand() * c.length)] : null; };
+  const count = (types) => near.filter(t => types.includes(t.type)).length;
+  while (count(["forest"]) < 5) { const t = pick(x => x.type === "grass" || x.type === "sand"); if (!t) break; t.type = "forest"; }
+  while (count(["hill", "mountain"]) < 3) { const t = pick(x => x.d >= 3 && (x.type === "grass" || x.type === "forest")); if (!t) break; t.type = "hill"; }
+  if (count(["water"]) < 2) {
+    const t = pick(x => x.d === START_R && x.type !== "hill" && x.type !== "mountain");
+    if (t) {
+      t.type = "water";
+      for (const [dq, dr] of DIRS) { const n = tiles.get(key(t.q + dq, t.r + dr)); if (n && n.d > START_R) n.type = "water"; }
+      for (const [dq, dr] of DIRS) { const n = tiles.get(key(t.q + dq, t.r + dr)); if (n && n.d <= START_R && n.d >= 2 && n.type !== "water") n.type = "sand"; }
+    }
+  }
+  for (const t of tileList) {
+    t.h = { water: 0.1, sand: 0.3, grass: 0.4 + t.jitter * 0.05, forest: 0.44, hill: 0.7, mountain: 0.9 }[t.type];
+  }
+}
+function neighbors(t) {
+  const out = [];
+  for (const [dq, dr] of DIRS) { const n = tiles.get(key(t.q + dq, t.r + dr)); if (n) out.push(n); }
+  return out;
+}
+
+// =====================================================================
+// Three.js scene
+// =====================================================================
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.appendChild(renderer.domElement);
+renderer.domElement.tabIndex = 0;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#a9d8ee");
+scene.fog = new THREE.Fog("#a9d8ee", 38, 85);
+
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+camera.position.set(0, 13, 15);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.2;
+controls.minPolarAngle = 0.35;
+controls.minDistance = 5;
+controls.maxDistance = 45;
+controls.screenSpacePanning = false;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+
+const hemi = new THREE.HemisphereLight("#fff6e0", "#5c7a4a", 1.1);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight("#fff1d6", 1.9);
+sun.position.set(14, 22, 9);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -28, right: 28, top: 28, bottom: -28, near: 1, far: 70 });
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.03;
+scene.add(sun);
+
+const ocean = new THREE.Mesh(
+  new THREE.CircleGeometry(120, 48).rotateX(-Math.PI / 2),
+  new THREE.MeshStandardMaterial({ color: "#3d9cc4", transparent: true, opacity: 0.82, roughness: 0.3, metalness: 0.05 })
+);
+ocean.position.y = 0.22;
+ocean.receiveShadow = true;
+scene.add(ocean);
+
+// ---------- day and night ----------
+const DAY_LEN = 240;      // seconds for one full day
+const DAY_FRAC = 0.62;    // share of the day the sun is up
+const SKY = { day: new THREE.Color("#a9d8ee"), dusk: new THREE.Color("#f0a27c"), night: new THREE.Color("#18223d") };
+const SEA = { day: new THREE.Color("#3d9cc4"), night: new THREE.Color("#1d3a5c") };
+const HEMI_SKY = { day: new THREE.Color("#fff6e0"), night: new THREE.Color("#6f86c8") };
+const moon = new THREE.DirectionalLight("#a9bcff", 0);
+scene.add(moon);
+const WIN = new THREE.MeshStandardMaterial({ color: "#4a4038", emissive: "#ffb347", emissiveIntensity: 0, flatShading: true });
+const stars = (() => {
+  const n = 500, pos = new Float32Array(n * 3), rnd = mulberry32(4242);
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, el = 0.12 + rnd() * 1.3, r = 95;
+    pos[i * 3] = Math.cos(a) * Math.cos(el) * r; pos[i * 3 + 1] = Math.sin(el) * r; pos[i * 3 + 2] = Math.sin(a) * Math.cos(el) * r;
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ color: "#ffffff", size: 0.7, transparent: true, opacity: 0, fog: false, depthWrite: false }));
+  scene.add(p); return p;
+})();
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+let light = 1;  // 1 = full day, 0 = full night
+function updateSky(dt) {
+  if (G.cycle) {
+    G.dayTime += dt / DAY_LEN;
+    if (G.dayTime >= 1) { G.dayTime -= 1; G.day++; }
+  }
+  const t = G.cycle ? G.dayTime : 0.28;
+  const isDay = t < DAY_FRAC;
+  const s = isDay ? t / DAY_FRAC : (t - DAY_FRAC) / (1 - DAY_FRAC);
+  const arc = Math.sin(s * Math.PI);                 // height of the sun (day) or moon (night)
+  const ang = s * Math.PI;
+  light = isDay ? smooth(0, 0.3, arc) : 0;
+  const low = isDay ? 1 - smooth(0.05, 0.45, arc) : 0; // sunrise / sunset glow
+  const sx = Math.cos(ang) * 26, sy = Math.max(2, arc * 24), sz = 10;
+  if (isDay) sun.position.set(sx, sy, sz); 
+  sun.intensity = 1.9 * light;
+  sun.color.setRGB(1, 0.95 - low * 0.25, 0.84 - low * 0.4);
+  moon.position.set(-Math.cos(ang) * 26, Math.max(4, arc * 24), -8);
+  moon.intensity = isDay ? 0 : 0.55 * smooth(0, 0.3, arc);
+  hemi.intensity = 0.45 + 0.65 * light;
+  hemi.color.copy(HEMI_SKY.night).lerp(HEMI_SKY.day, light);
+  scene.background.copy(SKY.night).lerp(SKY.day, light).lerp(SKY.dusk, low * 0.85 * Math.max(light, 0.4));
+  scene.fog.color.copy(scene.background);
+  ocean.material.color.copy(SEA.night).lerp(SEA.day, light);
+  stars.material.opacity = (1 - light) * 0.9;
+  if (cloudMat) cloudMat.color.setRGB(0.45 + 0.55 * light, 0.5 + 0.5 * light, 0.62 + 0.38 * light);
+  WIN.emissiveIntensity = (1 - light) * 1.8;
+  // Clock in the HUD
+  const part = isDay ? (s < 0.3 ? "morning" : s < 0.7 ? "midday" : "evening") : (s < 0.5 ? "night" : "late night");
+  const txt = `Day ${G.day}, ${part}`;
+  if (txt !== updateSky.last) {
+    updateSky.last = txt;
+    $("clockText").textContent = txt;
+    $("clockIcon").innerHTML = isDay ? ICON.sun : ICON.moon;
+    if (!isDay && G.cycle && !G.seenNight) { G.seenNight = true; toast("Night falls. Villagers head home and the windows light up."); }
+  }
+}
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.fov = w < h ? 58 : 42;
+  if (!resize.done) { resize.done = true; if (w < h) camera.position.set(0, 19, 21); }
+  camera.updateProjectionMatrix();
+  document.documentElement.style.setProperty("--bar-h", ($("bottom").offsetHeight || 112) + "px");
+}
+window.addEventListener("resize", resize);
+
+// ---------- materials & geometry cache ----------
+const MAT = {};
+function mat(color, extra = {}) {
+  const k = color + JSON.stringify(extra);
+  if (!MAT[k]) MAT[k] = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.85, ...extra });
+  return MAT[k];
+}
+const C = {
+  wall: "#f1e1bf", roof: "#c0483a", roof2: "#3f6fb5", roof3: "#5b8a3c", wood: "#8a5a32", dark: "#5e3b1f",
+  stone: "#a8a69f", dstone: "#6f6d69", gold: "#f0c030", field: "#8f6c3a", wheat: "#e7c95a", white: "#f8f6ef",
+  cloth1: "#d84a3a", cloth2: "#f3d44c", black: "#2a2420", leaf: "#4f8f3a", water: "#3d8fb8"
+};
+const GEO = {};
+function geo(k, make) { return GEO[k] || (GEO[k] = make()); }
+function part(g, m, x = 0, y = 0, z = 0, ry = 0) {
+  const mesh = new THREE.Mesh(g, m);
+  mesh.position.set(x, y, z);
+  mesh.rotation.y = ry;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+const box = (w, h, d, c, x, y, z, ry) => part(geo(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)), mat(c), x, y + h / 2, z, ry);
+const cyl = (rt, rb, h, s, c, x, y, z) => part(geo(`c${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s)), mat(c), x, y + h / 2, z);
+const pyramid = (r, h, c, x, y, z, ry = Math.PI / 4) => part(geo(`p${r},${h}`, () => new THREE.ConeGeometry(r, h, 4)), mat(c), x, y + h / 2, z, ry);
+const win = (w, h, x, y, z, ry = 0) => { const m = new THREE.Mesh(geo(`w${w},${h}`, () => new THREE.BoxGeometry(w, h, 0.012)), WIN); m.position.set(x, y, z); m.rotation.y = ry; return m; };
+const spire = (r, h, s, c, x, y, z) => part(geo(`s${r},${h},${s}`, () => new THREE.ConeGeometry(r, h, s)), mat(c), x, y + h / 2, z);
+
+// ---------- tiles ----------
+const TILE_COL = {
+  water: new THREE.Color("#7cc6d6"), sand: new THREE.Color("#ecd9a0"), grass: new THREE.Color("#8cc461"),
+  forest: new THREE.Color("#6aa64c"), hill: new THREE.Color("#b3ad7c"), mountain: new THREE.Color("#9a958e")
+};
+const FOG_COL = new THREE.Color("#c3cfd3");
+const WHITE = new THREE.Color("#ffffff"), DARK = new THREE.Color("#2b3a30");
+let tileMesh, decorMeshes = [];
+const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color(), ZERO = new THREE.Matrix4().makeScale(0, 0, 0);
+let highlightType = null;
+
+function buildTileMeshes() {
+  const g = new THREE.CylinderGeometry(0.97, 0.97, 1, 6, 1).translate(0, 0.5, 0);
+  tileMesh = new THREE.InstancedMesh(g, new THREE.MeshStandardMaterial({ flatShading: true, roughness: 0.95 }), tileList.length);
+  tileMesh.receiveShadow = true;
+  tileMesh.frustumCulled = false;
+  for (const t of tileList) {
+    const base = TILE_COL[t.type].clone();
+    if (t.type === "grass" || t.type === "forest") base.offsetHSL((t.jitter - 0.5) * 0.03, 0, (t.jitter - 0.5) * 0.06);
+    t.color = base;
+    tileMesh.setColorAt(t.idx, base);
+  }
+  scene.add(tileMesh);
+
+  // Decor: trees, rocks and mountain peaks as instanced meshes.
+  const forest = tileList.filter(t => t.type === "forest");
+  const hills = tileList.filter(t => t.type === "hill");
+  const mounts = tileList.filter(t => t.type === "mountain");
+  const rand = mulberry32(G.seed + 7);
+  const mk = (geom, color, n, shadow = true) => {
+    const m = new THREE.InstancedMesh(geom, new THREE.MeshStandardMaterial({ color: "#ffffff", flatShading: true, roughness: 0.9 }), Math.max(1, n));
+    m.castShadow = shadow; m.receiveShadow = true; m.frustumCulled = false; m.userData.next = 0; m.userData.base = new THREE.Color(color);
+    scene.add(m); decorMeshes.push(m); return m;
+  };
+  const trunk = mk(new THREE.CylinderGeometry(0.045, 0.06, 0.2, 5).translate(0, 0.1, 0), "#7a4e2a", forest.length * 3);
+  const leaf = mk(new THREE.ConeGeometry(0.22, 0.55, 6).translate(0, 0.45, 0), "#3f7f34", forest.length * 3);
+  const rock = mk(new THREE.DodecahedronGeometry(0.17, 0), "#9b968b", hills.length * 3);
+  const peak = mk(new THREE.ConeGeometry(0.86, 1.1, 6).translate(0, 0.55, 0), "#8d8983", mounts.length);
+  const snow = mk(new THREE.ConeGeometry(0.33, 0.43, 6).translate(0, 0.885, 0), "#f4f6f7", mounts.length, false);
+  const add = (mesh, t, m4, col) => {
+    const i = mesh.userData.next++;
+    t.decor.push({ mesh, i, m: m4, c: col });
+  };
+  for (const t of forest) {
+    const spots = [[0.32, 0.18], [-0.3, 0.25], [0.02, -0.36]];
+    for (const [ox, oz] of spots) {
+      const s = 0.8 + rand() * 0.5;
+      const m4 = new THREE.Matrix4().compose(new THREE.Vector3(t.x + ox + (rand() - .5) * .12, t.h, t.z + oz + (rand() - .5) * .12), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+      add(trunk, t, m4, trunk.userData.base.clone());
+      const lc = leaf.userData.base.clone().offsetHSL((rand() - .5) * .04, 0, (rand() - .5) * .08);
+      add(leaf, t, m4.clone(), lc);
+    }
+  }
+  for (const t of hills) {
+    for (let k = 0; k < 3; k++) {
+      const a = rand() * Math.PI * 2, rr = 0.25 + rand() * 0.4, s = 0.6 + rand() * 0.9;
+      const m4 = new THREE.Matrix4().compose(new THREE.Vector3(t.x + Math.cos(a) * rr, t.h + 0.04, t.z + Math.sin(a) * rr),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(rand(), rand() * 3, rand())), new THREE.Vector3(s, s * 0.8, s));
+      add(rock, t, m4, rock.userData.base.clone().offsetHSL(0, 0, (rand() - .5) * .1));
+    }
+  }
+  for (const t of mounts) {
+    const s = 0.9 + t.jitter * 0.35;
+    const m4 = new THREE.Matrix4().compose(new THREE.Vector3(t.x, t.h, t.z), new THREE.Quaternion(), new THREE.Vector3(1, s, 1));
+    add(peak, t, m4, peak.userData.base.clone());
+    add(snow, t, m4.clone(), snow.userData.base.clone());
+  }
+}
+
+function refreshTiles() {
+  const R = G.radius;
+  for (const t of tileList) {
+    const visible = t.d <= R + 2, fog = t.d > R;
+    if (!visible) tileMesh.setMatrixAt(t.idx, ZERO);
+    else tileMesh.setMatrixAt(t.idx, tmpM.compose(new THREE.Vector3(t.x, 0, t.z), new THREE.Quaternion(), new THREE.Vector3(1, t.h, 1)));
+    tmpC.copy(t.color);
+    if (fog) tmpC.lerp(FOG_COL, 0.6);
+    else if (highlightType) {
+      const ok = canPlace(highlightType, t, true).ok;
+      if (ok) tmpC.lerp(WHITE, 0.38); else tmpC.lerp(DARK, 0.18);
+    }
+    tileMesh.setColorAt(t.idx, tmpC);
+    for (const d of t.decor) {
+      d.mesh.setMatrixAt(d.i, !visible || t.building ? ZERO : d.m);
+      tmpC.copy(d.c);
+      if (fog) tmpC.lerp(FOG_COL, 0.55);
+      d.mesh.setColorAt(d.i, tmpC);
+    }
+  }
+  tileMesh.instanceMatrix.needsUpdate = true;
+  tileMesh.instanceColor.needsUpdate = true;
+  tileMesh.boundingSphere = null;
+  for (const m of decorMeshes) {
+    m.instanceMatrix.needsUpdate = true;
+    if (m.instanceColor) m.instanceColor.needsUpdate = true;
+  }
+}
+
+// ---------- clouds ----------
+const clouds = [];
+let cloudMat = null;
+function makeClouds() {
+  const g = new THREE.IcosahedronGeometry(1, 0);
+  const m = cloudMat = new THREE.MeshStandardMaterial({ color: "#ffffff", flatShading: true, roughness: 1, transparent: true, opacity: 0.92 });
+  const rand = mulberry32(99);
+  for (let i = 0; i < 9; i++) {
+    const c = new THREE.Group();
+    const n = 3 + Math.floor(rand() * 3);
+    for (let k = 0; k < n; k++) {
+      const p = new THREE.Mesh(g, m);
+      const s = 0.7 + rand() * 0.8;
+      p.scale.set(s * 1.3, s * 0.8, s);
+      p.position.set(k * 1.1 - n * 0.5, rand() * 0.4, (rand() - .5) * 0.8);
+      p.castShadow = true;
+      c.add(p);
+    }
+    c.position.set((rand() - .5) * 70, 9 + rand() * 4, (rand() - .5) * 60);
+    c.userData.speed = 0.3 + rand() * 0.4;
+    scene.add(c); clouds.push(c);
+  }
+}
+
+// =====================================================================
+// Building models
+// =====================================================================
+function faceWater(t) {
+  const ns = neighbors(t);
+  const w = ns.find(n => n.type === "water");
+  if (!w) return 0;
+  return Math.atan2(w.x - t.x, w.z - t.z);
+}
+const animated = [];
+function buildModel(b) {
+  const g = new THREE.Group();
+  const t = b.tile;
+  const rot = (Math.floor(t.jitter * 6) * Math.PI) / 3;
+  switch (b.type) {
+    case "hall": {
+      g.add(box(0.95, 0.42, 0.7, C.wall, 0, 0, 0));
+      const roof = pyramid(0.66, 0.42, C.roof, 0, 0.42, 0); roof.scale.set(1.05, 1, 0.78); g.add(roof);
+      g.add(box(0.28, 0.95, 0.28, C.stone, 0.42, 0, -0.32));
+      g.add(pyramid(0.24, 0.35, C.roof2, 0.42, 0.95, -0.32));
+      g.add(cyl(0.012, 0.012, 0.35, 4, C.dark, 0.42, 1.25, -0.32));
+      g.add(box(0.18, 0.11, 0.012, C.cloth2, 0.51, 1.46, -0.32));
+      g.add(box(0.16, 0.24, 0.02, C.dark, 0, 0, 0.35));
+      g.add(win(0.1, 0.1, -0.28, 0.22, 0.356), win(0.1, 0.1, 0.24, 0.22, 0.356), win(0.08, 0.12, 0.42, 0.7, -0.175));
+      g.rotation.y = rot;
+      break;
+    }
+    case "house": {
+      const s = Math.min(1.35, 1 + 0.045 * (b.level - 1));
+      g.add(box(0.48, 0.34, 0.4, C.wall, 0, 0, 0));
+      g.add(pyramid(0.38, 0.3, b.level >= 5 ? C.roof2 : C.roof, 0, 0.34, 0));
+      g.add(box(0.08, 0.2, 0.08, C.stone, 0.13, 0.4, 0.08));
+      g.add(box(0.11, 0.17, 0.02, C.dark, 0, 0, 0.2));
+      g.add(win(0.08, 0.08, -0.15, 0.19, 0.206), win(0.08, 0.08, 0.15, 0.19, 0.206), win(0.08, 0.08, 0.245, 0.19, 0, Math.PI / 2));
+      if (b.level >= 3) { g.add(box(0.3, 0.24, 0.28, C.wall, -0.36, 0, 0.18)); g.add(pyramid(0.25, 0.2, C.roof, -0.36, 0.24, 0.18)); }
+      g.scale.setScalar(s);
+      g.rotation.y = rot;
+      break;
+    }
+    case "farm": {
+      g.add(box(0.98, 0.05, 0.86, C.field, 0, 0, 0.05));
+      for (let i = 0; i < 5; i++) g.add(box(0.82, 0.09 + (b.level > 2 ? 0.03 : 0), 0.09, C.wheat, 0.02, 0.05, -0.27 + i * 0.16));
+      g.add(box(0.26, 0.24, 0.24, "#a8473a", -0.3, 0.05, -0.42));
+      g.add(pyramid(0.21, 0.16, C.dark, -0.3, 0.29, -0.42));
+      g.rotation.y = rot;
+      break;
+    }
+    case "lumber": {
+      g.add(box(0.46, 0.32, 0.36, C.wood, -0.12, 0, -0.1));
+      g.add(pyramid(0.34, 0.24, C.dark, -0.12, 0.32, -0.1));
+      for (let i = 0; i < 3; i++) {
+        const log = cyl(0.06, 0.06, 0.48, 6, "#b07a45", 0.3, 0.0, 0.22 - i * 0.02);
+        log.rotation.z = Math.PI / 2; log.position.set(0.22, 0.06 + (i === 2 ? 0.1 : 0), 0.18 + (i === 2 ? 0.06 : i * 0.12)); g.add(log);
+      }
+      const saw = cyl(0.13, 0.13, 0.015, 12, "#c9ccd1", 0, 0, 0); saw.rotation.x = Math.PI / 2; saw.position.set(-0.12, 0.2, 0.1); g.add(saw);
+      animated.push({ obj: saw, kind: "spinZ", speed: 4, b });
+      g.rotation.y = rot;
+      break;
+    }
+    case "quarry": {
+      g.add(cyl(0.42, 0.36, 0.04, 6, "#6b675f", 0, 0, 0));
+      const blocks = [[0.18, 0.05, 0.12, 0.2], [-0.2, 0.05, -0.05, 0.6], [0.02, 0.05, -0.25, 1.1], [-0.05, 0.19, 0.0, 0.3], [0.25, 0.05, -0.15, 0.9]];
+      for (const [x, y, z, r] of blocks) g.add(box(0.2, 0.14, 0.16, C.stone, x, y, z, r));
+      g.add(box(0.03, 0.55, 0.03, C.wood, -0.35, 0, 0.3));
+      const arm = box(0.4, 0.03, 0.03, C.wood, -0.2, 0.52, 0.3); g.add(arm);
+      g.add(box(0.008, 0.25, 0.008, C.black, -0.03, 0.28, 0.3));
+      g.rotation.y = rot;
+      break;
+    }
+    case "fish": {
+      for (const [x, z] of [[-0.15, -0.12], [0.15, -0.12], [-0.15, 0.12], [0.15, 0.12]]) g.add(cyl(0.025, 0.025, 0.18, 4, C.dark, x, -0.05, z));
+      g.add(box(0.4, 0.26, 0.34, C.wood, 0, 0.12, 0));
+      g.add(pyramid(0.3, 0.2, C.roof2, 0, 0.38, 0));
+      g.add(win(0.08, 0.08, 0.1, 0.26, 0.176));
+      g.add(box(0.14, 0.03, 0.8, "#b48a5a", 0.05, 0.1, 0.55));
+      g.add(cyl(0.01, 0.01, 0.4, 3, C.dark, 0.1, 0.12, 0.85));
+      g.rotation.y = faceWater(t);
+      break;
+    }
+    case "market": {
+      const stalls = [[-0.25, -0.15, C.cloth1], [0.25, -0.1, C.cloth2], [0, 0.28, C.cloth1]];
+      for (const [x, z, c] of stalls) {
+        g.add(box(0.3, 0.14, 0.2, C.wood, x, 0, z));
+        for (const [dx, dz] of [[-0.13, -0.09], [0.13, -0.09], [-0.13, 0.09], [0.13, 0.09]]) g.add(box(0.02, 0.3, 0.02, C.dark, x + dx, 0, z + dz));
+        g.add(box(0.34, 0.04, 0.24, c, x, 0.3, z));
+        g.add(box(0.08, 0.06, 0.08, c === C.cloth1 ? "#e5a33a" : "#73a845", x - 0.05, 0.14, z));
+        const lamp = new THREE.Mesh(geo("lamp", () => new THREE.BoxGeometry(0.05, 0.06, 0.05)), WIN); lamp.position.set(x + 0.13, 0.25, z + 0.11); g.add(lamp);
+      }
+      g.add(box(0.12, 0.1, 0.12, C.wood, 0.35, 0, 0.3, 0.4));
+      g.rotation.y = rot;
+      break;
+    }
+    case "windmill": {
+      g.add(cyl(0.17, 0.26, 0.78, 8, C.wall, 0, 0, 0));
+      g.add(spire(0.22, 0.25, 8, C.roof, 0, 0.78, 0));
+      const hub = new THREE.Group(); hub.position.set(0, 0.72, 0.24);
+      for (let i = 0; i < 4; i++) {
+        const arm = new THREE.Group(); arm.rotation.z = i * Math.PI / 2;
+        const blade = box(0.09, 0.42, 0.01, "#efe6d0", 0.03, 0.04, 0); arm.add(blade);
+        const spar = box(0.02, 0.46, 0.02, C.dark, 0, 0, 0); arm.add(spar);
+        hub.add(arm);
+      }
+      g.add(hub);
+      animated.push({ obj: hub, kind: "spinZ", speed: 1.4, b });
+      g.add(box(0.1, 0.18, 0.02, C.dark, 0, 0, 0.24));
+      g.rotation.y = rot;
+      break;
+    }
+    case "well": {
+      g.add(cyl(0.2, 0.22, 0.18, 10, C.stone, 0, 0, 0));
+      g.add(cyl(0.15, 0.15, 0.01, 10, C.water, 0, 0.17, 0));
+      g.add(box(0.03, 0.42, 0.03, C.wood, -0.18, 0, 0));
+      g.add(box(0.03, 0.42, 0.03, C.wood, 0.18, 0, 0));
+      g.add(pyramid(0.25, 0.14, C.roof, 0, 0.42, 0));
+      g.add(box(0.05, 0.06, 0.05, C.wood, 0.05, 0.25, 0.02));
+      g.rotation.y = rot;
+      break;
+    }
+    case "smith": {
+      g.add(box(0.55, 0.32, 0.42, C.dstone, 0, 0, 0));
+      g.add(pyramid(0.4, 0.22, C.dark, 0, 0.32, 0));
+      g.add(box(0.12, 0.5, 0.12, C.stone, 0.2, 0.2, -0.12));
+      g.add(box(0.14, 0.12, 0.02, "#ff8a2a", 0, 0.06, 0.215));
+      MAT.glow = MAT.glow || new THREE.MeshStandardMaterial({ color: "#ff9a3a", emissive: "#ff6a00", emissiveIntensity: 1.2 });
+      const ember = new THREE.Mesh(geo("ember", () => new THREE.BoxGeometry(0.1, 0.06, 0.1)), MAT.glow); ember.position.set(0.2, 0.73, -0.12); g.add(ember);
+      animated.push({ obj: ember, kind: "pulse", b });
+      g.add(box(0.14, 0.08, 0.08, C.black, -0.05, 0, 0.36));
+      g.rotation.y = rot;
+      break;
+    }
+    case "mine": {
+      g.add(box(0.5, 0.36, 0.18, C.dark, 0, 0, 0.12));
+      g.add(box(0.3, 0.26, 0.2, C.black, 0, 0, 0.13));
+      g.add(box(0.56, 0.06, 0.24, C.wood, 0, 0.36, 0.12));
+      const nug = geo("nug", () => new THREE.DodecahedronGeometry(0.06, 0));
+      for (const [x, z] of [[0.2, 0.42], [0.28, 0.32], [0.12, 0.5]]) { const n = part(nug, mat(C.gold, { metalness: 0.5, roughness: 0.4 }), x, 0.05, z); g.add(n); }
+      g.add(box(0.2, 0.12, 0.14, C.dstone, -0.2, 0.03, 0.45));
+      g.add(box(0.02, 0.01, 0.5, C.dark, -0.25, 0, 0.45));
+      g.add(box(0.02, 0.01, 0.5, C.dark, -0.15, 0, 0.45));
+      g.rotation.y = rot;
+      break;
+    }
+    case "harbor": {
+      g.add(box(0.45, 0.34, 0.36, C.wood, 0, 0, -0.25));
+      g.add(pyramid(0.34, 0.24, C.roof2, 0, 0.34, -0.25));
+      g.add(win(0.09, 0.09, -0.12, 0.2, -0.066), win(0.09, 0.09, 0.12, 0.2, -0.066));
+      g.add(box(0.3, 0.04, 1.0, "#b48a5a", 0, 0.02, 0.45));
+      const ship = new THREE.Group(); ship.position.set(0.42, -0.22, 0.95);
+      ship.add(box(0.26, 0.14, 0.7, C.dark, 0, 0, 0));
+      ship.add(box(0.2, 0.05, 0.5, C.wood, 0, 0.14, 0));
+      ship.add(cyl(0.015, 0.015, 0.7, 4, C.dark, 0, 0.14, 0));
+      ship.add(box(0.02, 0.4, 0.34, C.white, 0, 0.36, 0));
+      ship.add(box(0.012, 0.08, 0.12, C.cloth1, 0, 0.84, 0.05));
+      g.add(ship);
+      animated.push({ obj: ship, kind: "bob", base: -0.22, b });
+      g.rotation.y = faceWater(t);
+      break;
+    }
+    case "cathedral": {
+      g.add(box(0.46, 0.55, 0.86, "#e7dcc7", 0, 0, 0.05));
+      const roof = part(geo("nave", () => new THREE.CylinderGeometry(0.33, 0.33, 0.88, 3)), mat(C.roof2), 0, 0.69, 0.05);
+      roof.rotation.x = Math.PI / 2; roof.rotation.z = Math.PI; roof.rotation.y = 0; roof.scale.set(1, 1, 0.6); g.add(roof);
+      g.add(box(0.28, 1.05, 0.28, "#e7dcc7", 0, 0, -0.45));
+      g.add(pyramid(0.21, 0.6, C.roof2, 0, 1.05, -0.45));
+      const rose = cyl(0.08, 0.08, 0.02, 10, C.gold, 0, 0.62, -0.31); rose.rotation.x = Math.PI / 2; g.add(rose);
+      g.add(box(0.14, 0.26, 0.02, C.dark, 0, 0, 0.48));
+      for (const z of [-0.15, 0.1, 0.35]) g.add(win(0.07, 0.2, 0.236, 0.3, z, Math.PI / 2), win(0.07, 0.2, -0.236, 0.3, z, Math.PI / 2));
+      g.rotation.y = rot;
+      break;
+    }
+    case "castle": {
+      const w = 0.55;
+      for (const [x, z] of [[-w, -w], [w, -w], [-w, w], [w, w]]) {
+        g.add(cyl(0.15, 0.17, 0.8, 8, C.stone, x, 0, z * 0.85));
+        g.add(spire(0.19, 0.32, 8, C.roof2, x, 0.8, z * 0.85));
+      }
+      g.add(box(1.1, 0.45, 0.08, C.stone, 0, 0, -w * 0.85));
+      g.add(box(1.1, 0.45, 0.08, C.stone, 0, 0, w * 0.85));
+      g.add(box(0.08, 0.45, 0.9, C.stone, -w, 0, 0));
+      g.add(box(0.08, 0.45, 0.9, C.stone, w, 0, 0));
+      g.add(box(0.42, 0.95, 0.42, "#bdbab2", 0, 0, 0));
+      g.add(win(0.07, 0.11, -0.1, 0.7, 0.216), win(0.07, 0.11, 0.1, 0.7, 0.216), win(0.07, 0.11, 0, 0.45, 0.216));
+      g.add(pyramid(0.36, 0.42, C.roof, 0, 0.95, 0));
+      g.add(cyl(0.012, 0.012, 0.4, 4, C.dark, 0, 1.3, 0));
+      g.add(box(0.22, 0.13, 0.012, C.cloth1, 0.11, 1.55, 0));
+      g.add(box(0.2, 0.28, 0.1, C.dark, 0, 0, w * 0.85 + 0.01));
+      for (const [x, z] of [[-w, -w], [w, -w], [-w, w], [w, w]]) g.add(win(0.05, 0.1, x, 0.55, z * 0.85 + (z > 0 ? 0.17 : -0.17)));
+      g.rotation.y = rot;
+      break;
+    }
+  }
+  g.position.set(t.x, t.h, t.z);
+  g.traverse(o => { o.userData.tile = t; });
+  return g;
+}
+
+const buildRoot = new THREE.Group();
+scene.add(buildRoot);
+const popIns = [];
+function attachModel(b, animate) {
+  if (b.model) { removeAnimated(b); buildRoot.remove(b.model); }
+  b.model = buildModel(b);
+  buildRoot.add(b.model);
+  if (b.damaged) addDamageMarker(b);
+  if (animate) { b.model.userData.target = b.model.scale.x; b.model.scale.setScalar(0.01); popIns.push({ obj: b.model, t: 0 }); }
+}
+function removeAnimated(b) {
+  for (let i = animated.length - 1; i >= 0; i--) if (animated[i].b === b) animated.splice(i, 1);
+}
+const markGeo = new THREE.OctahedronGeometry(0.12, 0);
+const markMat = new THREE.MeshStandardMaterial({ color: "#e0402f", emissive: "#a01f10", emissiveIntensity: 0.6, flatShading: true });
+function addDamageMarker(b) {
+  const m = new THREE.Mesh(markGeo, markMat);
+  m.position.set(0, 1.3, 0);
+  m.userData.tile = b.tile;
+  b.model.add(m);
+  b.marker = m;
+  animated.push({ obj: m, kind: "marker", b });
+}
+
+// ---------- selection rings ----------
+function hexRing(color) {
+  const pts = [];
+  for (let i = 0; i <= 6; i++) { const a = (i * Math.PI) / 3; pts.push(new THREE.Vector3(Math.sin(a) * 0.93, 0, Math.cos(a) * 0.93)); }
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color, linewidth: 2 }));
+  l.visible = false; scene.add(l); return l;
+}
+const hoverRing = hexRing("#ffffff");
+const selRing = hexRing("#ffd23f");
+function placeRing(ring, t, color) {
+  if (!t) { ring.visible = false; return; }
+  ring.position.set(t.x, t.h + 0.02, t.z);
+  if (color) ring.material.color.set(color);
+  ring.visible = true;
+}
+
+// =====================================================================
+// Rules: placement, production
+// =====================================================================
+function tierIndex() {
+  let i = 0;
+  for (let k = 0; k < TIERS.length; k++) if (G.peakPop >= TIERS[k].pop) i = k;
+  return i;
+}
+function countType(type) { return buildings.filter(b => b.type === type).length; }
+function buildCost(type) {
+  const base = DEFS[type].cost, n = countType(type), out = {};
+  for (const r in base) out[r] = Math.ceil(base[r] * Math.pow(1.1, n));
+  return out;
+}
+function upgradeCost(b) {
+  const d = DEFS[b.type], base = d.upCost || d.cost, out = {};
+  for (const r in base) out[r] = Math.ceil(base[r] * 1.2 * Math.pow(1.75, b.level - 1));
+  if (!Object.keys(out).length) out.wood = 20;
+  return out;
+}
+function canAfford(cost) { return RES.every(r => (G.res[r] || 0) >= (cost[r] || 0)); }
+function pay(cost) { for (const r in cost) G.res[r] -= cost[r]; }
+function shortOf(cost) { return RES.find(r => (G.res[r] || 0) < (cost[r] || 0)); }
+
+function canPlace(type, t, ignoreCost = false) {
+  const d = DEFS[type];
+  if (!t || t.d > G.radius) return { ok: false, reason: "Outside your borders. Expand your land to build here." };
+  if (t.building) return { ok: false, reason: "Something is already built here." };
+  if (tierIndex() < d.tier) return { ok: false, reason: `Unlocks when you reach ${TIERS[d.tier].name}.` };
+  if (d.unique && countType(type) > 0) return { ok: false, reason: `You can only have one ${d.name}.` };
+  if (!d.on.includes(t.type)) return { ok: false, reason: `Build on ${d.on.map(x => TERRAIN_NAME[x].toLowerCase()).join(" or ")}, not ${TERRAIN_NAME[t.type].toLowerCase()}.` };
+  if (d.adj && !neighbors(t).some(n => d.adj.includes(n.type))) {
+    const want = d.adj.map(x => TERRAIN_NAME[x].toLowerCase()).join(" or ");
+    return { ok: false, reason: `Must be next to ${want}.` };
+  }
+  if (!ignoreCost) {
+    const s = shortOf(buildCost(type));
+    if (s) return { ok: false, reason: `Not enough ${s}.` };
+  }
+  return { ok: true };
+}
+
+function adjCount(t, pred) { return neighbors(t).filter(pred).length; }
+function produce(b) {
+  // Base output per second before workers and kingdom-wide bonuses.
+  const t = b.tile, L = lvlMult(b.level), o = { wood: 0, stone: 0, food: 0, gold: 0 };
+  switch (b.type) {
+    case "hall": o.gold = 0.25 * L; o.wood = 0.15 * L; break;
+    case "farm": {
+      const mills = neighbors(t).filter(n => n.building && n.building.type === "windmill" && !n.building.damaged);
+      const boost = mills.reduce((s, n) => s + 0.4 * lvlMult(n.building.level), 0);
+      o.food = 0.9 * L * (1 + boost); break;
+    }
+    case "lumber": o.wood = (0.2 + 0.22 * adjCount(t, n => n.type === "forest")) * L; break;
+    case "quarry": o.stone = (0.15 + 0.2 * adjCount(t, n => n.type === "hill" || n.type === "mountain")) * L; break;
+    case "fish": o.food = 0.3 * adjCount(t, n => n.type === "water") * L; break;
+    case "market": o.gold = (0.4 + 0.12 * adjCount(t, n => n.building && n.building.type === "house")) * L; break;
+    case "mine": o.gold = (1 + 0.25 * adjCount(t, n => n.type === "mountain")) * L; break;
+    case "harbor": o.gold = 1.4 * L; o.food = 0.7 * L; break;
+    case "castle": o.gold = 2 * L; break;
+  }
+  return o;
+}
+function housing(b) {
+  const L = b.level;
+  switch (b.type) {
+    case "hall": return 8 + 4 * (L - 1);
+    case "house": {
+      const wells = neighbors(b.tile).filter(n => n.building && n.building.type === "well" && !n.building.damaged);
+      return 5 + 3 * (L - 1) + wells.reduce((s, n) => s + 3 * lvlMult(n.building.level), 0);
+    }
+    case "castle": return 25 + 10 * (L - 1);
+  }
+  return 0;
+}
+function recompute() {
+  const raw = { wood: 0, stone: 0, food: 0, gold: 0 };
+  let cap = 0, jobs = 0, smith = 0, cath = 0, castle = 0;
+  for (const b of buildings) {
+    const d = DEFS[b.type];
+    jobs += d.workers;
+    cap += Math.floor(housing(b));
+    if (b.damaged) continue;
+    const p = produce(b);
+    for (const r of RES) raw[r] += p[r];
+    if (b.type === "smith") smith += 0.15 * lvlMult(b.level);
+    if (b.type === "cathedral") cath += 0.1 * lvlMult(b.level);
+    if (b.type === "castle") castle += 0.25 * lvlMult(b.level);
+  }
+  calc.raw = raw; calc.cap = cap; calc.jobs = jobs; calc.smith = smith; calc.allMult = 1 + cath + castle;
+  updateRates();
+}
+function updateRates() {
+  const eff = calc.jobs ? Math.min(1, G.pop / calc.jobs) : 1;
+  const m = calc.allMult, tools = 1 + calc.smith;
+  calc.eff = eff;
+  calc.rates = {
+    wood: calc.raw.wood * eff * m * tools,
+    stone: calc.raw.stone * eff * m * tools,
+    food: calc.raw.food * eff * m - G.pop * EAT,
+    gold: calc.raw.gold * eff * m + G.pop * TAX
+  };
+}
+function outputOf(b) {
+  // Actual output of one building right now, for the info panel.
+  const p = produce(b), eff = calc.eff, m = calc.allMult, tools = 1 + calc.smith, out = {};
+  if (b.damaged) return out;
+  if (p.wood) out.wood = p.wood * eff * m * tools;
+  if (p.stone) out.stone = p.stone * eff * m * tools;
+  if (p.food) out.food = p.food * eff * m;
+  if (p.gold) out.gold = p.gold * eff * m;
+  return out;
+}
+
+// =====================================================================
+// Actions
+// =====================================================================
+function addBuilding(type, t, level = 1, damaged = false, animate = false) {
+  const b = { type, tile: t, level, damaged };
+  t.building = b;
+  buildings.push(b);
+  attachModel(b, animate);
+  // Neighbors with adjacency visuals don't change, but bonuses do.
+  return b;
+}
+function place(type, t) {
+  const chk = canPlace(type, t);
+  if (!chk.ok) { toast(chk.reason); sfx.no(); return false; }
+  pay(buildCost(type));
+  addBuilding(type, t, 1, false, true);
+  recompute();
+  refreshTiles();
+  pathCache.clear();
+  sfx.build();
+  save();
+  return true;
+}
+function upgrade(b) {
+  if (b.level >= MAX_LEVEL) return;
+  const cost = upgradeCost(b);
+  if (!canAfford(cost)) { toast(`Not enough ${shortOf(cost)}.`); sfx.no(); return; }
+  pay(cost);
+  b.level++;
+  attachModel(b, true);
+  recompute();
+  sfx.upgrade();
+  toast(`${DEFS[b.type].name} upgraded to level ${b.level}.`);
+  showInfo(b.tile);
+  save();
+}
+function demolish(b) {
+  const d = DEFS[b.type];
+  if (b.type === "hall") return;
+  const base = d.cost;
+  for (const r in base) G.res[r] += Math.floor(base[r] * 0.5);
+  removeAnimated(b);
+  buildRoot.remove(b.model);
+  b.tile.building = null;
+  buildings.splice(buildings.indexOf(b), 1);
+  recompute();
+  refreshTiles();
+  pathCache.clear();
+  sfx.no();
+  toast(`${d.name} taken down. Half its cost came back.`);
+  closeInfo();
+  save();
+}
+function repairCost(b) { const w = DEFS[b.type].cost.wood || 20; return { wood: Math.ceil(w * 0.4) + 5 }; }
+function repair(b) {
+  const cost = repairCost(b);
+  if (!canAfford(cost)) { toast(`Not enough ${shortOf(cost)}.`); sfx.no(); return; }
+  pay(cost);
+  b.damaged = false;
+  removeAnimated(b);
+  attachModel(b, false);
+  recompute();
+  sfx.upgrade();
+  showInfo(b.tile);
+  save();
+}
+function expandCost() {
+  const k = G.radius - START_R;
+  return { gold: Math.ceil(30 * Math.pow(1.65, k)), stone: Math.ceil(20 * Math.pow(1.6, k)) };
+}
+function expand() {
+  if (G.radius >= LIMIT_R) return;
+  const cost = expandCost();
+  if (!canAfford(cost)) { toast(`Not enough ${shortOf(cost)}.`); sfx.no(); return; }
+  pay(cost);
+  G.radius++;
+  refreshTiles();
+  pathCache.clear();
+  sfx.upgrade();
+  toast("Your borders grow! New land to explore.", true);
+  save();
+}
+
+// =====================================================================
+// Villagers walking around
+// =====================================================================
+const walkers = [];
+const pathCache = new Map();
+const WALK = new Set(["sand", "grass", "forest", "hill"]);
+const personGeo = { body: new THREE.CylinderGeometry(0.05, 0.075, 0.2, 6).translate(0, 0.1, 0), head: new THREE.SphereGeometry(0.055, 6, 5).translate(0, 0.26, 0), load: new THREE.BoxGeometry(0.09, 0.07, 0.09).translate(0, 0.36, 0) };
+const tunics = ["#c0483a", "#3f6fb5", "#5b8a3c", "#d99a2b", "#8a5aa8"].map(c => new THREE.MeshStandardMaterial({ color: c, flatShading: true }));
+const skin = new THREE.MeshStandardMaterial({ color: "#f0c8a0", flatShading: true });
+const loadMats = Object.fromEntries(RES.map(r => [r, new THREE.MeshStandardMaterial({ color: RES_COLOR[r], flatShading: true })]));
+
+function findPath(a, b) {
+  const k = a.idx + ">" + b.idx;
+  if (pathCache.has(k)) return pathCache.get(k);
+  const prev = new Map([[a, null]]), queue = [a];
+  let found = false;
+  while (queue.length) {
+    const t = queue.shift();
+    if (t === b) { found = true; break; }
+    for (const n of neighbors(t)) {
+      if (prev.has(n) || n.d > G.radius) continue;
+      if (n !== b && !(WALK.has(n.type) || n.building)) continue;
+      prev.set(n, t); queue.push(n);
+    }
+  }
+  let path = null;
+  if (found) { path = []; for (let t = b; t; t = prev.get(t)) path.unshift(t); }
+  pathCache.set(k, path);
+  return path;
+}
+function resourceOf(b) { const p = produce(b); return RES.find(r => p[r] > 0) || "wood"; }
+function newTrip(w) {
+  const homes = buildings.filter(b => b.type === "house" || b.type === "hall");
+  const works = buildings.filter(b => DEFS[b.type].workers > 0 && !b.damaged);
+  if (!homes.length || !works.length) return false;
+  const h = homes[Math.floor(Math.random() * homes.length)], j = works[Math.floor(Math.random() * works.length)];
+  const p = findPath(h.tile, j.tile);
+  if (!p || p.length < 2) return false;
+  w.path = p; w.i = 0; w.t = 0; w.dir = 1; w.res = resourceOf(j);
+  w.load.material = loadMats[w.res]; w.load.visible = false;
+  return true;
+}
+function syncWalkers() {
+  const want = Math.floor(Math.min(36, Math.floor(G.pop / 2)) * (light < 0.3 ? 0.3 : 1));
+  while (walkers.length > want) { const w = walkers.pop(); scene.remove(w.g); }
+  let tries = 0;
+  while (walkers.length < want && tries++ < 4) {
+    const g = new THREE.Group();
+    const body = new THREE.Mesh(personGeo.body, tunics[walkers.length % tunics.length]); body.castShadow = true;
+    const head = new THREE.Mesh(personGeo.head, skin);
+    const load = new THREE.Mesh(personGeo.load, loadMats.wood);
+    g.add(body, head, load);
+    const w = { g, load, ox: (Math.random() - .5) * 0.5, oz: (Math.random() - .5) * 0.5, speed: 0.55 + Math.random() * 0.3, wait: Math.random() * 3 };
+    if (!newTrip(w)) break;
+    const s0 = w.path[0]; g.position.set(s0.x + w.ox, s0.h, s0.z + w.oz);
+    scene.add(g); walkers.push(w);
+  }
+}
+function moveWalkers(dt) {
+  for (const w of walkers) {
+    if (w.wait > 0) { w.wait -= dt; w.g.visible = w.wait < 0.01 ? true : w.g.visible; continue; }
+    const a = w.path[w.i], b = w.path[w.i + w.dir];
+    if (!a || !b) {
+      if (w.dir === 1) { w.dir = -1; w.load.visible = true; w.wait = 1 + Math.random(); continue; }
+      if (!newTrip(w)) { w.wait = 2; } else w.wait = 1.5 + Math.random() * 2;
+      continue;
+    }
+    w.t += (dt * w.speed);
+    if (w.t >= 1) { w.t = 0; w.i += w.dir; continue; }
+    const x = a.x + (b.x - a.x) * w.t + w.ox, z = a.z + (b.z - a.z) * w.t + w.oz;
+    const ha = a.building ? a.h : a.h, hb = b.h;
+    const y = ha + (hb - ha) * w.t + Math.abs(Math.sin(w.t * Math.PI * 4)) * 0.03;
+    w.g.position.set(x, y, z);
+    w.g.rotation.y = Math.atan2(b.x - a.x, b.z - a.z);
+    w.g.visible = true;
+  }
+}
+
+// =====================================================================
+// Sound
+// =====================================================================
+let actx = null;
+function tone(freq, dur, type = "triangle", vol = 0.05, slide = 0, delay = 0) {
+  if (!G || !G.sound) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + delay;
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  } catch {}
+}
+const sfx = {
+  click: () => tone(660, 0.05, "triangle", 0.03),
+  build: () => { tone(220, 0.12, "square", 0.04, -60); tone(330, 0.12, "triangle", 0.05, 0, 0.08); },
+  upgrade: () => { tone(523, 0.1, "triangle", 0.05); tone(659, 0.1, "triangle", 0.05, 0, 0.08); tone(784, 0.18, "triangle", 0.05, 0, 0.16); },
+  no: () => tone(180, 0.15, "sawtooth", 0.03, -40),
+  event: () => { tone(880, 0.25, "sine", 0.05); tone(660, 0.35, "sine", 0.04, 0, 0.15); }
+};
+
+// =====================================================================
+// UI
+// =====================================================================
+const ICON = {
+  wood: '<svg viewBox="0 0 20 20"><rect x="2" y="7" width="16" height="6" rx="3" fill="#9a6434"/><circle cx="16" cy="10" r="3" fill="#d6a26b" stroke="#6b4421"/></svg>',
+  stone: '<svg viewBox="0 0 20 20"><path d="M3 15 6 6l6-2 5 5-1 6z" fill="#a8a69f" stroke="#5f5d58"/></svg>',
+  food: '<svg viewBox="0 0 20 20"><path d="M10 3v15M10 6l-3-2M10 6l3-2M10 10l-3-2M10 10l3-2M10 14l-3-2M10 14l3-2" stroke="#c48a1e" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>',
+  gold: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7" fill="#e8b931" stroke="#9c7614"/><path d="M10 6v8" stroke="#9c7614" stroke-width="1.5"/></svg>',
+  sun: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="4.2" fill="#f0b429"/><g stroke="#f0b429" stroke-width="1.8" stroke-linecap="round"><path d="M10 1.5v2.5M10 16v2.5M1.5 10H4M16 10h2.5M4 4l1.7 1.7M14.3 14.3 16 16M4 16l1.7-1.7M14.3 5.7 16 4"/></g></svg>',
+  moon: '<svg viewBox="0 0 20 20"><path d="M13.5 3.2A7 7 0 1 0 16.8 14 5.6 5.6 0 0 1 13.5 3.2z" fill="#5b6fb0"/></svg>',
+  people: '<svg viewBox="0 0 20 20"><circle cx="10" cy="6" r="3.2" fill="#4e74b8"/><path d="M4 18c0-4 3-6 6-6s6 2 6 6z" fill="#4e74b8"/></svg>'
+};
+const chips = {};
+function buildResBar() {
+  const res = $("res");
+  for (const r of [...RES, "people"]) {
+    const c = document.createElement("div");
+    c.className = "chip";
+    c.title = r === "people" ? "Villagers / room in homes" : cap1(r);
+    c.innerHTML = ICON[r] + '<span class="amt"></span><span class="rate"></span>';
+    res.appendChild(c);
+    chips[r] = { el: c, amt: c.querySelector(".amt"), rate: c.querySelector(".rate") };
+  }
+}
+function renderRes() {
+  for (const r of RES) {
+    const ch = chips[r], rate = calc.rates[r];
+    setText(ch.amt, fmt(G.res[r]));
+    setText(ch.rate, fmtRate(rate));
+    ch.rate.className = "rate " + (rate > 0.001 ? "up" : rate < -0.001 ? "down" : "");
+  }
+  chips.food.el.classList.toggle("warn", G.res.food <= 0.5 && calc.rates.food < 0);
+  const p = chips.people;
+  p.amt.textContent = `${Math.floor(G.pop)}/${calc.cap}`;
+  const need = calc.jobs;
+  p.rate.textContent = `${Math.min(need, Math.floor(G.pop))}/${need} jobs`;
+  p.rate.className = "rate " + (G.pop < need ? "down" : "");
+  const ti = tierIndex(), next = TIERS[ti + 1];
+  $("tierName").textContent = TIERS[ti].name;
+  if (next) {
+    const prev = TIERS[ti].pop;
+    $("tierProg").style.width = Math.min(100, ((G.peakPop - prev) / (next.pop - prev)) * 100) + "%";
+    $("tierNext").textContent = `${next.pop} villagers to ${next.name}`;
+  } else {
+    $("tierProg").style.width = "100%";
+    $("tierNext").textContent = "The greatest realm of all";
+  }
+}
+
+function costHTML(cost) {
+  return Object.entries(cost).map(([r, v]) =>
+    `<span class="${(G.res[r] || 0) < v ? "short" : ""}"><i class="dot" style="background:${RES_COLOR[r]}"></i>${fmt(v)}</span>`).join("");
+}
+let buildMode = null;
+const cards = {};
+function buildBar() {
+  const bar = $("bar");
+  const ex = document.createElement("button");
+  ex.type = "button"; ex.className = "card expand"; ex.id = "card-expand";
+  ex.innerHTML = '<span class="nm">Expand land</span><span class="cost"></span><span class="sub"></span>';
+  ex.addEventListener("click", () => { sfx.click(); expand(); renderBar(); });
+  bar.appendChild(ex);
+  cards.expand = ex;
+  BUILD_ORDER.forEach((type, i) => {
+    const d = DEFS[type];
+    const c = document.createElement("button");
+    c.type = "button"; c.className = "card"; c.id = "card-" + type;
+    c.title = d.desc;
+    c.innerHTML = `<span class="nm">${d.name}</span>${i < 9 ? `<span class="key">${i + 1}</span>` : ""}<span class="cost"></span><span class="lock"></span>`;
+    c.addEventListener("click", () => { sfx.click(); toggleBuild(type); });
+    bar.appendChild(c);
+    cards[type] = c;
+  });
+}
+// Only touch the DOM when something actually changed, so the bar never flickers.
+function setHTML(el, html) { if (el.__html !== html) { el.__html = html; el.innerHTML = html; } }
+function setText(el, txt) { if (el.textContent !== txt) el.textContent = txt; }
+function renderBar() {
+  const ti = tierIndex();
+  for (const type of BUILD_ORDER) {
+    const d = DEFS[type], c = cards[type];
+    const locked = ti < d.tier || (d.unique && countType(type) > 0);
+    c.classList.toggle("locked", locked);
+    c.classList.toggle("on", buildMode === type);
+    setHTML(c.querySelector(".cost"), locked ? "" : costHTML(buildCost(type)));
+    setText(c.querySelector(".lock"), ti < d.tier ? `Unlocks at ${TIERS[d.tier].name}` : (d.unique && countType(type) > 0 ? "Built" : ""));
+  }
+  const ex = cards.expand;
+  if (G.radius >= LIMIT_R) {
+    setHTML(ex.querySelector(".cost"), "");
+    setText(ex.querySelector(".sub"), "Your land reaches the edge of the realm.");
+    ex.disabled = true;
+  } else {
+    setHTML(ex.querySelector(".cost"), costHTML(expandCost()));
+    setText(ex.querySelector(".sub"), `Border ring ${G.radius - START_R + 1} → ${G.radius - START_R + 2}`);
+  }
+}
+function toggleBuild(type) {
+  const d = DEFS[type];
+  if (tierIndex() < d.tier) { toast(`${d.name} unlocks when you reach ${TIERS[d.tier].name} (${TIERS[d.tier].pop} villagers).`); return; }
+  if (d.unique && countType(type) > 0) { toast(`You already have a ${d.name}.`); return; }
+  setBuild(buildMode === type ? null : type);
+}
+function setBuild(type) {
+  buildMode = type;
+  highlightType = type;
+  closeInfo();
+  refreshTiles();
+  renderBar();
+  const hint = $("hint");
+  if (type) {
+    hint.hidden = false;
+    const d = DEFS[type];
+    let where = `on ${d.on.map(x => TERRAIN_NAME[x].toLowerCase()).join(" or ")}`;
+    if (d.adj) where += ` next to ${d.adj.map(x => TERRAIN_NAME[x].toLowerCase()).join(" or ")}`;
+    $("hintText").textContent = `Placing ${d.name}: tap a bright tile ${where}.`;
+  } else {
+    hint.hidden = true;
+    $("tip").hidden = true;
+    placeRing(hoverRing, null);
+  }
+}
+$("cancelBuild").addEventListener("click", () => setBuild(null));
+
+function previewText(type, t) {
+  const fake = { type, tile: t, level: 1, damaged: false };
+  const p = produce(fake), out = [];
+  const eff = calc.eff, m = calc.allMult, tools = 1 + calc.smith;
+  if (p.wood) out.push(`${fmtRate(p.wood * m * tools)} wood`);
+  if (p.stone) out.push(`${fmtRate(p.stone * m * tools)} stone`);
+  if (p.food) out.push(`${fmtRate(p.food * m)} food`);
+  if (p.gold) out.push(`${fmtRate(p.gold * m)} gold`);
+  if (type === "house") {
+    const wells = adjCount(t, n => n.building && n.building.type === "well");
+    out.push(`room for ${5 + wells * 3} villagers`);
+  }
+  if (type === "windmill") out.push(`boosts ${adjCount(t, n => n.building && n.building.type === "farm")} nearby farms`);
+  if (type === "well") out.push(`helps ${adjCount(t, n => n.building && n.building.type === "house")} nearby houses`);
+  if (type === "smith") out.push("+15% wood and stone");
+  if (type === "cathedral") out.push("+10% everything");
+  if (type === "castle") out.push("+25% everything, room for 25");
+  const workers = DEFS[type].workers;
+  if (workers) out.push(`needs ${workers} worker${workers > 1 ? "s" : ""}`);
+  return out.join(", ");
+}
+
+// ---------- info panel ----------
+let selected = null;
+function closeInfo() { $("side").hidden = true; selected = null; placeRing(selRing, null); }
+function showInfo(t) {
+  const side = $("side");
+  selected = t;
+  placeRing(selRing, t, "#ffd23f");
+  side.replaceChildren();
+  const close = document.createElement("button");
+  close.className = "close"; close.type = "button"; close.setAttribute("aria-label", "Close"); close.textContent = "×";
+  close.addEventListener("click", closeInfo);
+  side.appendChild(close);
+  const b = t.building;
+  const h = document.createElement("h2");
+  const p = (txt, cls) => { const e = document.createElement("p"); e.textContent = txt; if (cls) e.className = cls; side.appendChild(e); return e; };
+  if (!b) {
+    h.textContent = TERRAIN_NAME[t.type];
+    side.appendChild(h);
+    const tips = {
+      water: "Fishing Huts and Harbors need to be next to water.",
+      sand: "Good for houses, quarries, fishing huts and harbors.",
+      grass: "Open land. Most buildings go here.",
+      forest: "Lumber Mills next to forests cut more wood.",
+      hill: "Quarries next to hills dig more stone. Gold Mines are built on hills.",
+      mountain: "Too steep to build on. Quarries and Gold Mines next to mountains do better."
+    };
+    p(tips[t.type]);
+    if (t.d > G.radius) p("This land is outside your borders. Use Expand land to claim it.", "muted");
+  } else {
+    const d = DEFS[b.type];
+    h.innerHTML = "";
+    h.textContent = d.name + " ";
+    const lv = document.createElement("span"); lv.className = "lvl"; lv.textContent = `Level ${b.level}`; h.appendChild(lv);
+    side.appendChild(h);
+    p(d.desc);
+    const ul = document.createElement("ul");
+    const li = (txt) => { const e = document.createElement("li"); e.textContent = txt; ul.appendChild(e); };
+    if (b.damaged) li("Damaged by a storm. It makes nothing until repaired.");
+    const out = outputOf(b);
+    for (const r in out) li(`Makes ${fmtRate(out[r])} ${r}`);
+    const cap = Math.floor(housing(b));
+    if (cap) li(`Home for ${cap} villagers`);
+    if (d.workers) li(`Needs ${d.workers} worker${d.workers > 1 ? "s" : ""}${calc.eff < 1 ? `, only ${Math.round(calc.eff * 100)}% staffed` : ""}`);
+    if (b.type === "lumber") li(`${adjCount(t, n => n.type === "forest")} forest tiles next to it`);
+    if (b.type === "quarry") li(`${adjCount(t, n => n.type === "hill" || n.type === "mountain")} hill or mountain tiles next to it`);
+    if (b.type === "fish") li(`${adjCount(t, n => n.type === "water")} water tiles next to it`);
+    if (b.type === "market") li(`${adjCount(t, n => n.building && n.building.type === "house")} houses next to it`);
+    if (b.type === "windmill") li(`Boosting ${adjCount(t, n => n.building && n.building.type === "farm")} farms by ${Math.round(40 * lvlMult(b.level))}%`);
+    if (b.type === "well") li(`Helping ${adjCount(t, n => n.building && n.building.type === "house")} houses (+${Math.round(3 * lvlMult(b.level))} villagers each)`);
+    if (b.type === "smith") li(`+${Math.round(15 * lvlMult(b.level))}% wood and stone`);
+    if (b.type === "cathedral") li(`+${Math.round(10 * lvlMult(b.level))}% to everything`);
+    if (b.type === "castle") li(`+${Math.round(25 * lvlMult(b.level))}% to everything`);
+    if (ul.children.length) side.appendChild(ul);
+    const btns = document.createElement("div"); btns.className = "btns";
+    if (b.damaged) {
+      const rc = repairCost(b);
+      const r = document.createElement("button"); r.type = "button"; r.className = "btn";
+      r.innerHTML = `Repair <small class="cost">${costHTML(rc)}</small>`;
+      r.addEventListener("click", () => repair(b));
+      btns.appendChild(r);
+    }
+    if (b.level < MAX_LEVEL) {
+      const uc = upgradeCost(b);
+      const u = document.createElement("button"); u.type = "button"; u.className = "btn";
+      u.innerHTML = `Upgrade to level ${b.level + 1} <small class="cost">${costHTML(uc)}</small>`;
+      u.disabled = !canAfford(uc);
+      u.addEventListener("click", () => upgrade(b));
+      btns.appendChild(u);
+    } else {
+      p("Fully upgraded.", "muted");
+    }
+    if (b.type !== "hall") {
+      const dm = document.createElement("button"); dm.type = "button"; dm.className = "btn plain";
+      dm.textContent = "Take down";
+      let armed = false;
+      dm.addEventListener("click", () => {
+        if (!armed) { armed = true; dm.textContent = "Tap again to take down"; dm.classList.add("danger"); return; }
+        demolish(b);
+      });
+      btns.appendChild(dm);
+    }
+    side.appendChild(btns);
+  }
+  side.hidden = false;
+}
+
+// ---------- toasts ----------
+function toast(msg, big = false) {
+  const t = document.createElement("div");
+  t.className = "toast paper" + (big ? " big" : "");
+  t.textContent = msg;
+  $("toasts").appendChild(t);
+  while ($("toasts").children.length > 3) $("toasts").firstChild.remove();
+  setTimeout(() => t.remove(), big ? 4200 : 2800);
+}
+
+// ---------- random events ----------
+let activeEvent = null;
+function totalIncome() { return Math.max(0.5, calc.rates.wood + calc.rates.stone + Math.max(0, calc.rates.food) + calc.rates.gold); }
+function startEvent() {
+  const inc = totalIncome();
+  const prodBuildings = buildings.filter(b => DEFS[b.type].workers > 0 && !b.damaged);
+  const pool = ["merchant", "harvest", "treasure", "settlers"];
+  if (prodBuildings.length >= 3) pool.push("storm");
+  const kind = pool[Math.floor(Math.random() * pool.length)];
+  const amt = Math.max(25, Math.round(inc * 25 / 5) * 5);
+  if (kind === "merchant") {
+    const offers = [["wood", "gold"], ["stone", "gold"], ["gold", "food"], ["food", "wood"], ["wood", "stone"]];
+    const [give, get] = offers[Math.floor(Math.random() * offers.length)];
+    const giveAmt = amt, getAmt = Math.round(amt * (0.8 + Math.random() * 0.5));
+    showEvent("A traveling merchant", `They offer ${getAmt} ${get} for ${giveAmt} of your ${give}.`, [
+      { label: "Trade", act: () => {
+        if (G.res[give] < giveAmt) { toast(`You don't have ${giveAmt} ${give}.`); sfx.no(); return false; }
+        G.res[give] -= giveAmt; G.res[get] += getAmt; toast(`Traded! +${getAmt} ${get}.`); return true;
+      } },
+      { label: "No thanks", plain: true, act: () => true }
+    ], 30);
+  } else if (kind === "harvest") {
+    const f = Math.max(25, Math.round(calc.raw.food * 40));
+    G.res.food += f;
+    showEvent("Bumper harvest", `Perfect weather! Your fields gave an extra ${f} food.`, [{ label: "Hooray", act: () => true }], 12);
+  } else if (kind === "treasure") {
+    const g = Math.max(20, Math.round(amt * 0.8));
+    G.res.gold += g;
+    showEvent("Buried treasure", `A villager dug up an old chest with ${g} gold inside.`, [{ label: "Lucky!", act: () => true }], 12);
+  } else if (kind === "settlers") {
+    const room = Math.floor(calc.cap - G.pop);
+    if (room >= 2) {
+      const n = Math.min(room, 3 + Math.floor(G.pop / 20));
+      G.pop += n;
+      showEvent("New settlers", `${n} travelers liked your kingdom and moved in.`, [{ label: "Welcome!", act: () => true }], 12);
+    } else {
+      showEvent("Travelers passing by", "Some travelers wanted to stay, but every home is full. Build more houses!", [{ label: "OK", act: () => true }], 12);
+    }
+  } else if (kind === "storm") {
+    const b = prodBuildings[Math.floor(Math.random() * prodBuildings.length)];
+    b.damaged = true;
+    removeAnimated(b);
+    attachModel(b, false);
+    recompute();
+    showEvent("Storm!", `Wind and rain damaged your ${DEFS[b.type].name}. Click it and repair it to get it working again.`, [
+      { label: "Show me", act: () => { const dx = b.tile.x - controls.target.x, dz = b.tile.z - controls.target.z; controls.target.x += dx; controls.target.z += dz; camera.position.x += dx; camera.position.z += dz; showInfo(b.tile); return true; } }
+    ], 15);
+  }
+  sfx.event();
+}
+function showEvent(title, text, buttons, seconds) {
+  const el = $("event");
+  el.replaceChildren();
+  const h = document.createElement("h3"); h.textContent = title;
+  const p = document.createElement("p"); p.textContent = text;
+  const btns = document.createElement("div"); btns.className = "btns";
+  for (const b of buttons) {
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn" + (b.plain ? " plain" : ""); btn.textContent = b.label;
+    btn.addEventListener("click", () => { if (b.act() !== false) hideEvent(); save(); });
+    btns.appendChild(btn);
+  }
+  const timer = document.createElement("div"); timer.className = "timer"; timer.innerHTML = "<i></i>";
+  el.append(h, p, btns, timer);
+  el.hidden = false;
+  activeEvent = { left: seconds, total: seconds, bar: timer.firstChild };
+}
+function hideEvent() { $("event").hidden = true; activeEvent = null; }
+
+// =====================================================================
+// Simulation
+// =====================================================================
+let lastTier = 0;
+function simulate(dt) {
+  updateRates();
+  for (const r of RES) G.res[r] += calc.rates[r] * dt;
+  if (G.res.food < 0) G.res.food = 0;
+  if (G.res.food > 0 && G.pop < calc.cap) G.pop = Math.min(calc.cap, G.pop + (0.25 + G.pop * 0.004) * dt);
+  else if (G.pop > calc.cap) G.pop = Math.max(calc.cap, G.pop - 0.5 * dt);
+  if (G.res.food <= 0 && calc.rates.food < 0) G.pop = Math.max(2, G.pop - 0.15 * dt);
+  if (G.pop > G.peakPop) G.peakPop = Math.floor(G.pop);
+  G.clock += dt;
+  if (G.clock >= G.nextEvent && !activeEvent) {
+    G.nextEvent = G.clock + 70 + Math.random() * 60;
+    startEvent();
+  }
+  if (activeEvent) {
+    activeEvent.left -= dt;
+    activeEvent.bar.style.width = Math.max(0, (activeEvent.left / activeEvent.total) * 100) + "%";
+    if (activeEvent.left <= 0) hideEvent();
+  }
+  const ti = tierIndex();
+  if (ti > lastTier) {
+    const unlocked = BUILD_ORDER.filter(t => DEFS[t].tier === ti).map(t => DEFS[t].name);
+    toast(`Your realm is now a ${TIERS[ti].name}!`, true);
+    if (unlocked.length) toast(`New buildings: ${unlocked.join(", ")}.`);
+    sfx.upgrade();
+    lastTier = ti;
+    renderBar();
+    save();
+  }
+}
+function offlineCatchUp() {
+  const away = Math.min(4 * 3600, (Date.now() - (G.savedAt || Date.now())) / 1000);
+  if (away < 60) return;
+  const before = { ...G.res };
+  // Simulate in coarse steps so food and villagers balance out.
+  const steps = Math.min(240, Math.ceil(away / 10)), dt = away / steps;
+  const clock = G.clock, next = G.nextEvent;
+  for (let i = 0; i < steps; i++) {
+    updateRates();
+    for (const r of RES) G.res[r] += calc.rates[r] * dt;
+    if (G.res.food < 0) G.res.food = 0;
+    if (G.res.food > 0 && G.pop < calc.cap) G.pop = Math.min(calc.cap, G.pop + (0.25 + G.pop * 0.004) * dt);
+    if (G.res.food <= 0 && calc.rates.food < 0) G.pop = Math.max(2, G.pop - 0.15 * dt);
+  }
+  G.clock = clock; G.nextEvent = Math.max(next, clock + 30);
+  if (G.pop > G.peakPop) G.peakPop = Math.floor(G.pop);
+  const gains = RES.map(r => [r, G.res[r] - before[r]]).filter(([, v]) => v >= 1).map(([r, v]) => `+${fmt(v)} ${r}`);
+  if (gains.length) setTimeout(() => toast(`While you were away (${fmtTime(away)}): ${gains.join(", ")}.`, true), 600);
+}
+
+// =====================================================================
+// Save / load
+// =====================================================================
+function serialize() {
+  G.buildings = buildings.map(b => ({ t: b.type, q: b.tile.q, r: b.tile.r, l: b.level, d: b.damaged ? 1 : 0 }));
+  G.savedAt = Date.now();
+  return JSON.parse(JSON.stringify(G));
+}
+function save() { if (G) store.set(SAVE_KEY, JSON.stringify(serialize())); }
+function load(data) {
+  if (data && data.v === 1) return data;
+  const raw = store.get(SAVE_KEY);
+  if (raw) { try { const d = JSON.parse(raw); if (d && d.v === 1) return d; } catch {} }
+  return null;
+}
+
+// =====================================================================
+// Input
+// =====================================================================
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pickTile(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects([tileMesh, buildRoot], true);
+  for (const h of hits) {
+    if (h.object === tileMesh) { const t = tileList[h.instanceId]; if (t && t.d <= G.radius + 2) return t; continue; }
+    if (h.object.userData.tile) return h.object.userData.tile;
+  }
+  return null;
+}
+let down = null;
+renderer.domElement.addEventListener("pointerdown", (e) => { down = { x: e.clientX, y: e.clientY, t: performance.now(), b: e.button }; });
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!down) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+  const quick = performance.now() - down.t < 600;
+  const btn = down.b; down = null;
+  if (moved > 8 || !quick) return;
+  if (btn === 2) { if (buildMode) setBuild(null); return; }
+  const t = pickTile(e);
+  if (buildMode) {
+    if (t && place(buildMode, t)) {
+      renderBar();
+      const type = buildMode;
+      if (!canAfford(buildCost(type)) || (DEFS[type].unique)) setBuild(null); else refreshTiles();
+    }
+    updateTip(e, t);
+    return;
+  }
+  if (t) { sfx.click(); showInfo(t); } else closeInfo();
+});
+renderer.domElement.addEventListener("contextmenu", (e) => e.preventDefault());
+renderer.domElement.addEventListener("pointermove", (e) => {
+  if (e.pointerType !== "mouse") return;
+  const t = pickTile(e);
+  if (buildMode) updateTip(e, t);
+  else { placeRing(hoverRing, t && t !== selected ? t : null, "#ffffff"); }
+});
+renderer.domElement.addEventListener("pointerleave", () => { $("tip").hidden = true; placeRing(hoverRing, null); });
+function updateTip(e, t) {
+  const tip = $("tip");
+  if (!buildMode || !t) { tip.hidden = true; placeRing(hoverRing, null); return; }
+  const chk = canPlace(buildMode, t);
+  placeRing(hoverRing, t, chk.ok ? "#7dff7a" : "#ff6b5a");
+  tip.replaceChildren();
+  const b = document.createElement("b"); b.textContent = DEFS[buildMode].name;
+  const s = document.createElement("span");
+  if (chk.ok) { s.className = "good"; s.textContent = previewText(buildMode, t); }
+  else { s.className = "bad"; s.textContent = chk.reason; }
+  tip.append(b, s);
+  if (e.pointerType === "mouse") {
+    tip.style.left = Math.min(window.innerWidth - 250, e.clientX + 16) + "px";
+    tip.style.top = Math.max(10, e.clientY - 70) + "px";
+  } else {
+    tip.style.left = "50%"; tip.style.top = "auto";
+    tip.style.transform = "translateX(-50%)";
+    tip.style.bottom = `calc(var(--bar-h) + 70px)`;
+    clearTimeout(updateTip.h);
+    updateTip.h = setTimeout(() => { tip.hidden = true; }, 2500);
+  }
+  tip.hidden = false;
+}
+document.addEventListener("keydown", (e) => {
+  if (e.target instanceof HTMLInputElement) return;
+  if (e.key === "Escape") { if (!$("menu").hidden) $("menu").hidden = true; else if (buildMode) setBuild(null); else closeInfo(); }
+  const n = parseInt(e.key, 10);
+  if (n >= 1 && n <= 9 && $("menu").hidden && $("help").hidden) toggleBuild(BUILD_ORDER[n - 1]);
+});
+
+// ---------- menu ----------
+function syncMenu() {
+  $("mSound").textContent = `Sound: ${G.sound ? "on" : "off"}`;
+  $("mShadows").textContent = `Shadows: ${G.shadows ? "on" : "off"}`;
+  $("mCycle").textContent = `Day and night: ${G.cycle ? "on" : "off"}`;
+  $("statsLine").textContent = `${buildings.length} buildings, ${Math.floor(G.pop)} villagers, biggest population ${G.peakPop}. Played for ${fmtTime(G.clock)}.`;
+}
+function applyShadows() {
+  renderer.shadowMap.enabled = G.shadows;
+  sun.castShadow = G.shadows;
+  scene.traverse(o => { if (o.material) { const ms = Array.isArray(o.material) ? o.material : [o.material]; ms.forEach(m => m.needsUpdate = true); } });
+}
+$("menuBtn").addEventListener("click", () => { syncMenu(); resetArmed(false); $("menu").hidden = false; });
+$("menuClose").addEventListener("click", () => { $("menu").hidden = true; });
+$("mHelp").addEventListener("click", () => { $("menu").hidden = true; $("help").hidden = false; });
+$("mSound").addEventListener("click", () => { G.sound = !G.sound; syncMenu(); save(); sfx.click(); });
+$("mShadows").addEventListener("click", () => { G.shadows = !G.shadows; applyShadows(); syncMenu(); save(); });
+$("mCycle").addEventListener("click", () => { G.cycle = !G.cycle; updateSky.last = null; syncMenu(); save(); });
+function resetArmed(on) {
+  const area = $("resetArea");
+  area.replaceChildren();
+  if (!on) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "btn danger"; b.id = "mReset"; b.textContent = "Start a new kingdom";
+    b.addEventListener("click", () => resetArmed(true));
+    area.appendChild(b);
+  } else {
+    const p = document.createElement("p"); p.textContent = "This erases your kingdom forever and makes a brand new island. Are you sure?";
+    const yes = document.createElement("button"); yes.type = "button"; yes.className = "btn danger"; yes.textContent = "Yes, start over";
+    yes.addEventListener("click", () => { store.del(SAVE_KEY); G = null; location.reload(); });
+    const no = document.createElement("button"); no.type = "button"; no.className = "btn plain"; no.textContent = "Keep my kingdom";
+    no.addEventListener("click", () => resetArmed(false));
+    area.append(p, yes, no);
+  }
+}
+$("mReset").addEventListener("click", () => resetArmed(true));
+$("helpClose").addEventListener("click", () => { $("help").hidden = true; G.seenHelp = true; save(); });
+
+// =====================================================================
+// Main loop
+// =====================================================================
+const clock = new THREE.Clock();
+let uiTimer = 0, barTimer = 0, saveTimer = 0, walkerTimer = 0, paused = false;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { save(); paused = true; }
+  else { paused = false; clock.getDelta(); offlineCatchUp(); }
+});
+window.addEventListener("pagehide", save);
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, clock.getDelta());
+  const now = performance.now() / 1000;
+  if (!paused) {
+    simulate(dt);
+    uiTimer += dt; barTimer += dt; saveTimer += dt; walkerTimer += dt;
+    if (uiTimer > 0.25) { uiTimer = 0; renderRes(); }
+    if (barTimer > 0.6) { barTimer = 0; renderBar(); if (selected && selected.building && !$("side").hidden) refreshInfoButtons(); }
+    if (saveTimer > 8) { saveTimer = 0; save(); }
+    if (walkerTimer > 1.5) { walkerTimer = 0; syncWalkers(); }
+    updateSky(dt);
+  }
+  moveWalkers(dt);
+  for (const a of animated) {
+    if (a.kind === "spinZ") a.obj.rotation.z += dt * a.speed * (a.b.damaged ? 0 : calc.eff);
+    else if (a.kind === "bob") a.obj.position.y = a.base + Math.sin(now * 1.6) * 0.025;
+    else if (a.kind === "pulse") a.obj.material.emissiveIntensity = 0.9 + Math.sin(now * 5) * 0.4;
+    else if (a.kind === "marker") { a.obj.position.y = 1.3 + Math.sin(now * 3) * 0.08; a.obj.rotation.y += dt * 2; }
+  }
+  for (let i = popIns.length - 1; i >= 0; i--) {
+    const p = popIns[i]; p.t += dt / 0.45;
+    const k = Math.min(1, p.t), c1 = 1.70158, c3 = c1 + 1;
+    const e = 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2);
+    p.obj.scale.setScalar(Math.max(0.01, e * p.obj.userData.target));
+    if (k >= 1) popIns.splice(i, 1);
+  }
+  for (const c of clouds) { c.position.x += c.userData.speed * dt; if (c.position.x > 40) c.position.x = -40; }
+  ocean.position.y = 0.22 + Math.sin(now * 0.8) * 0.012;
+  controls.update();
+  renderer.render(scene, camera);
+}
+function refreshInfoButtons() {
+  // Keep the upgrade button's affordability fresh without rebuilding the panel.
+  const b = selected.building;
+  const btn = [...$("side").querySelectorAll(".btn")].find(x => x.textContent.startsWith("Upgrade"));
+  if (btn && b) {
+    const uc = upgradeCost(b);
+    btn.disabled = !canAfford(uc);
+    const c = btn.querySelector(".cost"); if (c) setHTML(c, costHTML(uc));
+  }
+}
+
+// =====================================================================
+// Boot
+// =====================================================================
+function start(hotData) {
+  G = load(hotData && hotData.save) || freshState(Math.floor(Math.random() * 1e9));
+  G.sound = G.sound !== false; G.shadows = G.shadows !== false; G.cycle = G.cycle !== false;
+  if (typeof G.dayTime !== "number") G.dayTime = 0.06;
+  if (!G.day) G.day = 1;
+  generateWorld(G.seed);
+  buildTileMeshes();
+  for (const s of G.buildings) {
+    const t = tiles.get(key(s.q, s.r));
+    if (t && DEFS[s.t] && !t.building) addBuilding(s.t, t, s.l || 1, !!s.d, false);
+  }
+  if (!buildings.some(b => b.type === "hall")) addBuilding("hall", tiles.get("0,0"));
+  recompute();
+  lastTier = tierIndex();
+  makeClouds();
+  buildResBar();
+  buildBar();
+  refreshTiles();
+  offlineCatchUp();
+  recompute();
+  applyShadows();
+  updateSky(0);
+  $("loading").remove();
+  $("top").hidden = false;
+  $("bottom").hidden = false;
+  resize();
+  renderRes(); renderBar();
+  syncWalkers();
+  if (!G.seenHelp) $("help").hidden = false;
+  window.claude?.hot?.snapshot?.(() => ({ save: serialize() }));
+  frame();
+}
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
+
+</body>
+</html>
