@@ -152,7 +152,8 @@ details summary { cursor: pointer; font-family: var(--font-cond); font-weight: 7
 .choice button b { font-family: var(--font-cond); font-size: 17px; display: block; }
 .choice button span { font-size: 13px; color: var(--ink-soft); }
 .choice button[disabled] { opacity: .45; cursor: default; }
-.picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dialog > * { min-width: 0; }
 .picker div { background: var(--paper-2); border-radius: 5px; padding: 6px; text-align: center; display: grid; gap: 4px; }
 .picker b { font-family: var(--font-cond); font-size: 22px; }
 .picker .pm { display: flex; justify-content: center; gap: 4px; }
@@ -176,21 +177,60 @@ table.score tr.win td { font-weight: 700; background: #f6e9c4; }
 .loading { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; font-family: var(--font-display); font-size: 28px; padding: 20px; }
 .loading small { display: block; font-family: var(--font-body); font-size: 15px; color: var(--ink-soft); max-width: 320px; margin-top: 6px; }
 
-@media (max-width: 760px) {
-  :root { --panel-w: 0px; }
-  .players { width: auto; top: calc(env(safe-area-inset-top, 0px) + 54px); right: max(16px, env(safe-area-inset-right, 0px)); padding: 6px; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .players h1 { display: none; }
-  .players .round { grid-column: 1 / -1; font-size: 13px; }
-  .pl .nm { font-size: 14px; }
-  .topright { left: max(16px, env(safe-area-inset-left, 0px)); justify-content: flex-end; }
-  .topright::before { content: "Iron Acres"; font-family: var(--font-display); font-size: 22px; margin-right: auto; align-self: center; }
-  .board { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); max-height: 48%; }
-  .prompt { max-width: calc(100% - 32px); bottom: calc(var(--board-h, 120px) + 18px + env(safe-area-inset-bottom, 0px)); width: max-content; left: 50%; }
-  .log { display: none; }
-  .cam { right: max(16px, env(safe-area-inset-right, 0px)); bottom: auto; top: var(--prompt-top, 130px); grid-template-columns: 34px; }
-  .cam .opt { display: none; }
-  .cam .wide { grid-column: auto; font-size: 11px; }
-}
+/* ---------- phones (layout set by script: phone-p = portrait, phone-l = landscape) ---------- */
+html { -webkit-text-size-adjust: 100%; }
+body { touch-action: manipulation; }
+.players, .topright, .board, .prompt, .cam, .log { -webkit-user-select: none; user-select: none; }
+#view canvas { -webkit-touch-callout: none; }
+.seat select { font-size: 16px; }
+.chip-pl { flex: 0 0 auto; display: flex; align-items: center; gap: 5px; padding: 6px 8px 6px 5px; border: 0; border-radius: 4px; background: var(--paper-2); font-family: var(--font-cond); font-weight: 700; font-size: 15px; line-height: 1; cursor: pointer; white-space: nowrap; }
+.chip-pl i { width: 5px; height: 18px; border-radius: 2px; }
+.chip-pl b { color: var(--rust); font-weight: 700; }
+.chip-pl.cur { outline: 2px solid var(--rust); background: #fbf3e2; }
+.nation { display: grid; grid-template-columns: 6px minmax(0, 1fr); gap: 2px 10px; padding: 6px 8px 6px 0; background: var(--paper-2); border-radius: 5px; }
+.nation .bar { grid-row: span 3; border-radius: 3px 0 0 3px; }
+.nation b { font-family: var(--font-cond); font-size: 17px; }
+.nation span { font-size: 13.5px; color: var(--ink-soft); line-height: 1.35; }
+.events { display: grid; gap: 3px; font-size: 13.5px; color: var(--ink-soft); }
+:root[data-layout^="phone"] { --panel-w: 0px; }
+[data-layout^="phone"] .players { top: calc(env(safe-area-inset-top, 0px) + 8px); left: max(10px, env(safe-area-inset-left, 0px)); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 54px); width: auto; padding: 4px; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+[data-layout^="phone"] .players::-webkit-scrollbar { display: none; }
+[data-layout^="phone"] .topright { top: calc(env(safe-area-inset-top, 0px) + 8px); right: max(10px, env(safe-area-inset-right, 0px)); }
+[data-layout^="phone"] .topright .btn { width: 46px; height: 46px; padding: 0; font-size: 22px; line-height: 1; }
+[data-layout^="phone"] .log { display: none; }
+[data-layout^="phone"] .toasts { top: calc(var(--top-h, 56px) + 8px); }
+[data-layout^="phone"] .toast.big { font-size: 17px; }
+[data-layout^="phone"] .cam { grid-template-columns: 40px; gap: 6px; padding: 5px; top: calc(var(--top-h, 56px) + 8px); bottom: auto; right: max(10px, env(safe-area-inset-right, 0px)); }
+[data-layout^="phone"] .cam .opt, [data-layout^="phone"] #camIn, [data-layout^="phone"] #camOut { display: none; }
+[data-layout^="phone"] .cam button { width: 40px; height: 40px; border-radius: 50%; font-size: 17px; }
+[data-layout^="phone"] .cam .wide { grid-column: auto; font-size: 14px; }
+[data-layout^="phone"] .board { overscroll-behavior: contain; }
+[data-layout^="phone"] .bhead { padding: 7px 10px; }
+[data-layout^="phone"] .bhead h2 { font-size: 18px; }
+[data-layout^="phone"] .bbody { padding: 6px 10px 10px; gap: 6px; }
+[data-layout^="phone"] .stock b { font-size: 16px; }
+[data-layout^="phone"] .stock small { font-size: 10px; }
+[data-layout^="phone"] .col .t span, [data-layout^="phone"] .col .b span { font-size: 12px; }
+[data-layout^="phone"] .prompt { transform: none; max-width: none; width: auto; padding: 6px 10px; gap: 6px 10px; }
+[data-layout^="phone"] .prompt .txt { font-size: 14px; }
+[data-layout^="phone"] .prompt .btn { padding: 5px 12px; font-size: 16px; }
+[data-layout^="phone"] .tip { left: 50% !important; top: calc(var(--top-h, 56px) + 8px) !important; transform: translateX(-50%); max-width: calc(100% - 130px); }
+[data-layout^="phone"] .overlay { padding: max(10px, env(safe-area-inset-top, 0px)) max(10px, env(safe-area-inset-right, 0px)) max(10px, env(safe-area-inset-bottom, 0px)) max(10px, env(safe-area-inset-left, 0px)); }
+[data-layout^="phone"] .dialog { padding: 14px 14px 16px; gap: 10px; }
+[data-layout^="phone"] .dialog h2 { font-size: 24px; }
+[data-layout^="phone"] .seat { grid-template-columns: 1fr 1fr; }
+[data-layout="phone-p"] .picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+[data-layout^="phone"] .picker .pm button { width: 40px; height: 34px; font-size: 18px; }
+[data-layout^="phone"] .seg button { padding: 6px 10px; }
+[data-layout^="phone"] .seat label { grid-column: 1 / -1; }
+/* portrait: the action board is a bottom sheet and the prompt sits right above it */
+[data-layout="phone-p"] .board { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); width: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); max-height: 52%; }
+[data-layout="phone-p"] .prompt { left: max(10px, env(safe-area-inset-left, 0px)); right: max(10px, env(safe-area-inset-right, 0px)); bottom: calc(var(--board-h, 110px) + 16px + env(safe-area-inset-bottom, 0px)); }
+/* landscape: the action board is a slim side panel */
+[data-layout="phone-l"] .board { top: calc(var(--top-h, 56px) + 6px); right: max(10px, env(safe-area-inset-right, 0px)); bottom: auto; left: auto; width: 290px; max-height: calc(100% - var(--top-h, 56px) - 14px - env(safe-area-inset-bottom, 0px)); }
+[data-layout="phone-l"] .cam { right: auto; left: max(10px, env(safe-area-inset-left, 0px)); }
+[data-layout="phone-l"] .prompt { left: calc(max(10px, env(safe-area-inset-left, 0px)) + 60px); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 300px); bottom: calc(env(safe-area-inset-bottom, 0px) + 8px); }
+[data-layout="phone-l"] .title-big { font-size: 40px; }
 @media (prefers-reduced-motion: reduce) { .toast { animation: none; } .col { transition: none; } }
 </style>
 
@@ -784,10 +824,40 @@ scene.add(sun);
 const water = new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#4f8a93", roughness: 0.35, metalness: 0.05, transparent: true, opacity: 0.86 }));
 water.position.y = -0.05; water.receiveShadow = true; scene.add(water);
 
+// Layout: phones get their own arrangement (portrait bottom sheet / landscape side panel).
+let LAYOUT = "desktop";
+const isPhone = () => LAYOUT !== "desktop";
+function applyLayout() {
+  const w = window.innerWidth, h = window.innerHeight;
+  const next = (w < 760 || Math.min(w, h) < 560) ? (w >= h ? "phone-l" : "phone-p") : "desktop";
+  const changed = next !== LAYOUT;
+  LAYOUT = next;
+  document.documentElement.dataset.layout = LAYOUT;
+  $("camTracks").textContent = isPhone() ? "★" : "Tracks";
+  $("menuBtn").textContent = isPhone() ? "☰" : "Menu";
+  $("menuBtn").setAttribute("aria-label", "Menu");
+  $("camView").textContent = isPhone() ? (frameMap.top ? "3D" : "2D") : (frameMap.top ? "Tilted" : "Top-down");
+  return changed;
+}
+let topH = 56;
+function viewInsets() {
+  // Screen space the panels cover, so the map centers itself in what's left.
+  if (LAYOUT === "phone-p") return { l: 0, r: 0, t: topH, b: 130 };
+  if (LAYOUT === "phone-l") return { l: 60, r: 305, t: topH, b: 0 };
+  return { l: 0, r: 360, t: 0, b: 0 };
+}
+function applyViewOffset() {
+  const w = view.clientWidth, h = view.clientHeight, i = viewInsets();
+  const cx = (i.l + w - i.r) / 2, cy = (i.t + h - i.b) / 2;
+  camera.setViewOffset(w, h, w / 2 - cx, h / 2 - cy, w, h);
+}
 function resize() {
+  const changed = applyLayout();
   const w = view.clientWidth, h = view.clientHeight;
   renderer.setSize(w, h, false);
-  camera.aspect = w / h; camera.fov = w < h ? 55 : 40; camera.updateProjectionMatrix();
+  camera.aspect = w / h; camera.fov = LAYOUT === "phone-p" ? 50 : 40;
+  applyViewOffset();
+  if (changed && S && !$("players").hidden) { renderAll(); frameMap(!!frameMap.top); }
 }
 window.addEventListener("resize", resize);
 
@@ -1256,14 +1326,14 @@ function clearHighlight() { for (const f of lit.values()) f.visible = false; lit
 // =====================================================================
 let camGoal = null;
 function frameMap(top = false, tracks = false) {
-  const R = S ? S.R : 5, narrow = view.clientWidth < 760;
-  const side = narrow ? 0 : 3.2;
-  const d = tracks ? R * 12.5 + (narrow ? 25 : 0) : R * 4.6 + (narrow ? 12 : 2);
-  const target = tracks ? new THREE.Vector3(narrow ? 0 : side * 0.6, 0, narrow ? 2 : -1.8) : new THREE.Vector3(side, 0, narrow ? 3 : 0.5);
-  const pos = top ? new THREE.Vector3(side, d * 1.05, target.z + 0.01) : new THREE.Vector3(side, d * 0.72, target.z + d * 0.7);
+  const R = S ? S.R : 5;
+  const k = { desktop: [4.6, 2, 12.5], "phone-p": [5.4, 6, 15.5], "phone-l": [4.3, 0, 11] }[LAYOUT];
+  const d = tracks ? R * k[2] : R * k[0] + k[1];
+  const target = new THREE.Vector3(0, 0, tracks ? -1.8 : 0.5);
+  const pos = top ? new THREE.Vector3(0, d * 1.05, target.z + 0.01) : new THREE.Vector3(0, d * 0.72, target.z + d * 0.7);
   camGoal = { target, pos, t: 0 };
   frameMap.top = top;
-  $("camView").textContent = top ? "Tilted" : "Top-down";
+  $("camView").textContent = isPhone() ? (top ? "3D" : "2D") : (top ? "Tilted" : "Top-down");
 }
 function panBy(dx, dz) {
   const fwd = new THREE.Vector3().subVectors(controls.target, camera.position); fwd.y = 0; fwd.normalize();
@@ -1284,12 +1354,8 @@ function zoomBy(f) {
 function focusPlayer(p) {
   // Swing the camera toward this nation's side of the valley, keeping it clear of the action board.
   const { x, z } = toWorld(p.home.q, p.home.r);
-  const narrow = view.clientWidth < 760;
   const off = new THREE.Vector3().subVectors(camera.position, controls.target);
-  const fwd = off.clone().negate(); fwd.y = 0; fwd.normalize();
-  const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
-  const target = new THREE.Vector3(x * 0.55, 0, z * 0.55).add(right.multiplyScalar(narrow ? 0 : 3.2));
-  if (narrow) target.add(fwd.multiplyScalar(-3));
+  const target = new THREE.Vector3(x * 0.55, 0, z * 0.55);
   camGoal = { target, pos: target.clone().add(off), t: 0 };
 }
 function focusTile(t) {
@@ -1361,6 +1427,17 @@ const sfx = {
 function renderPlayers() {
   const elp = $("players");
   elp.replaceChildren();
+  if (isPhone()) {
+    for (const p of S.players) {
+      const c = document.createElement("button"); c.type = "button"; c.className = "chip-pl" + (p.i === S.turn ? " cur" : "");
+      c.innerHTML = `<i style="background:${F(p).color}"></i>${F(p).short} <b>★${p.stars.length}</b>`;
+      c.setAttribute("aria-label", `${F(p).name}: ${p.stars.length} stars. Show all nations.`);
+      c.addEventListener("click", showNations);
+      elp.appendChild(c);
+    }
+    requestAnimationFrame(() => { topH = elp.getBoundingClientRect().bottom + 4; document.documentElement.style.setProperty("--top-h", topH + "px"); applyViewOffset(); });
+    return;
+  }
   const h = document.createElement("h1"); h.textContent = "Iron Acres";
   const r = document.createElement("div"); r.className = "round";
   r.textContent = `Round ${S.round} · ${MODES[S.mode].label} · ${S.target} stars ends it`;
@@ -1450,6 +1527,26 @@ function renderBoard() {
   body.appendChild(det);
   bd.appendChild(body);
 }
+function showNations() {
+  if (!$("modal").hidden) return;
+  modal((b2, done) => {
+    b2.append(el("h2", null, "Nations"), el("p", "muted", `Round ${S.round} · ${MODES[S.mode].label} game · ${S.target} stars ends it`));
+    for (const p of S.players) {
+      const f = F(p), row = el("div", "nation");
+      const bar = el("span", "bar"); bar.style.background = f.color;
+      const nm = el("b", null, `${f.short} · ${p.label}${p.i === S.turn ? " · playing now" : ""}`);
+      row.append(bar, nm,
+        el("span", null, `★ ${p.stars.length}/${S.target} · ${p.coins} coins · ${p.power} power · ${p.pop} popularity`),
+        el("span", null, `${territoriesOf(p)} territories · ${workersOf(p).length} workers · ${p.mechs} machines · ${p.cards.length} battle cards`));
+      b2.appendChild(row);
+    }
+    b2.appendChild(el("h3", null, "Recent events"));
+    const ev = el("div", "events");
+    for (const m of S.log.slice(-8)) ev.appendChild(el("div", null, m));
+    b2.appendChild(ev);
+    const ok = el("button", "btn", "Back to the map"); ok.type = "button"; ok.addEventListener("click", () => done()); b2.appendChild(ok);
+  });
+}
 function starProgress(p, k) {
   return { upgrades: `${p.ups.length}/6`, mechs: `${p.mechs}/4`, structures: `${p.structs.length}/4`, recruits: `${Object.keys(p.recruits).length}/4`,
     workers: `${workersOf(p).length}/8`, objective: p.objDone !== false ? "1/1" : "0/1", pop: `${p.pop}/18`, power: `${p.power}/16`, battle1: `${Math.min(1, p.battleStars)}/1`, battle2: `${p.battleStars}/2` }[k];
@@ -1501,7 +1598,7 @@ function ask(text, buttons = [], tiles = null, color) {
 }
 function tempMin(on) {
   // On phones, fold the board away while the player is clicking on the map.
-  if (window.innerWidth >= 760) return;
+  if (!isPhone()) return;
   $("board").classList.toggle("min", on || (boardMin && !pickColumns));
 }
 function finish(v) {
@@ -2542,6 +2639,8 @@ if (location.hash === "#debug") window.__ia = {
   reach(id) { const u = S.units.find(x => x.id === id); return reachable(S.players[u.p], u).map(t => [t.q, t.r]); }
 };
 $("loading").remove();
+applyLayout();
+if (isPhone()) sun.shadow.mapSize.set(1024, 1024);
 resize();
 camera.position.set(0, 24, 24);
 frame();
