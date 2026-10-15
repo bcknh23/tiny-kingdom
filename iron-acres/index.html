@@ -335,13 +335,13 @@ const FACTIONS = {
       { key: "speed", name: "Treads", text: "Your hero and machines move 1 extra tile." },
       { key: "attack2", name: "Steel Nerve", text: "+2 strength in battles you start." }
     ] },
-  velska: { name: "Velska Free State", short: "Velska", color: "#3f6fb0", dark: "#2a4a78", power: 4, pop: 3, cards: 3, coins: 7,
+  velska: { name: "Velska Free State", short: "Velska", color: "#3f6fb0", dark: "#2a4a78", power: 4, pop: 4, cards: 3, coins: 7,
     ability: "Swimmers", abilityText: "Your workers can cross rivers.",
     mechs: [
       { key: "river", name: "Riverwalk", text: "Your hero and machines can cross rivers." },
       { key: "lakes", name: "Seafaring", text: "Your hero and machines can enter and cross lakes." },
       { key: "speed", name: "Treads", text: "Your hero and machines move 1 extra tile." },
-      { key: "defend2", name: "Snowblind", text: "+2 strength when you are attacked." }
+      { key: "defend2", name: "Snowblind", text: "+2 strength in every battle (+3 when attacked)." }
     ] },
   kaskar: { name: "Kaskar Khanate", short: "Kaskar", color: "#d6a21f", dark: "#8f6a10", power: 4, pop: 2, cards: 1,
     ability: "Horse Lords", abilityText: "Your hero moves 1 extra tile.",
@@ -2091,37 +2091,50 @@ async function curtain(p) {
     b2.appendChild(b);
   });
 }
+// Thrown when a human backs out of an action before anything happened, so they can pick another.
+const BACK = Symbol("back");
+const BACK_BTN = { label: "Change action", value: "back", plain: true };
 async function humanTurn(p) {
   focusPlayer(p);
-  const colKey = await new Promise(resolve => {
-    pickColumns = (k) => { pickColumns = null; renderBoard(); resolve(k); };
-    renderBoard();
-    status(`${F(p).short}: pick an action on your board.`);
-  });
-  sfx.click();
-  if (colKey === "forge") { p.lastCol = "forge"; log(`${pname(p)} used their Forge plan.`); await doPlan(p); renderAll(); return; }
-  const col = COLUMNS.find(c => c.key === colKey);
-  p.lastCol = col.key;
-  log(`${pname(p)} chose ${col.top}.`);
-  await doTop(p, col);
-  renderAll();
-  if (S.over) return;
-  checkStars(p); if (S.over) return;
-  if (!bottomDone(p, col.bottom)) {
-    const cost = costOf(p, col.bottom);
-    if (canPay(p, col.res, cost)) {
-      const r = await ask(`Also ${col.bottomName} for ${cost} ${col.res}? (+${col.coins} coin${col.coins > 1 ? "s" : ""})`, [{ label: col.bottomName, value: "yes" }, { label: "Skip", value: "no", plain: true }]);
-      if (r.button === "yes") await doBottom(p, col);
+  for (;;) {
+    const colKey = await new Promise(resolve => {
+      pickColumns = (k) => { pickColumns = null; renderBoard(); resolve(k); };
+      renderBoard();
+      status(`${F(p).short}: pick an action on your board.`);
+    });
+    sfx.click();
+    const prevLast = p.lastCol, logLen = S.log.length;
+    try {
+      if (colKey === "forge") { p.lastCol = "forge"; log(`${pname(p)} used their Forge plan.`); await doPlan(p); renderAll(); return; }
+      const col = COLUMNS.find(c => c.key === colKey);
+      p.lastCol = col.key;
+      log(`${pname(p)} chose ${col.top}.`);
+      await doTop(p, col);
+      renderAll();
+      if (S.over) return;
+      checkStars(p); if (S.over) return;
+      if (!bottomDone(p, col.bottom)) {
+        const cost = costOf(p, col.bottom);
+        if (canPay(p, col.res, cost)) {
+          const r = await ask(`Also ${col.bottomName} for ${cost} ${col.res}? (+${col.coins} coin${col.coins > 1 ? "s" : ""})`, [{ label: col.bottomName, value: "yes" }, { label: "Skip", value: "no", plain: true }]);
+          if (r.button === "yes") await doBottom(p, col);
+        }
+      }
+      renderAll();
+      return;
+    } catch (e) {
+      if (e !== BACK) throw e;
+      p.lastCol = prevLast; S.log.length = logLen; renderLog(); renderAll();
     }
   }
-  renderAll();
 }
 async function doTop(p, col) {
   const human = p.ctrl === "human";
   if (col.key === "move") {
     const coins = 1 + upLv(p, "moveCoins");
     if (human) {
-      const r = await ask("Move your units or take coins?", [{ label: `Move ${2 + upLv(p, "moveUnits")} units`, value: "move" }, { label: `Take ${coins} coin${coins > 1 ? "s" : ""}`, value: "coins", plain: true }]);
+      const r = await ask("Move your units or take coins?", [{ label: `Move ${2 + upLv(p, "moveUnits")} units`, value: "move" }, { label: `Take ${coins} coin${coins > 1 ? "s" : ""}`, value: "coins", plain: true }, BACK_BTN]);
+      if (r.button === "back") throw BACK;
       if (r.button === "coins") { gain(p, "coins", coins); log(`${pname(p)} took ${coins} coin${coins > 1 ? "s" : ""}.`); return; }
       await humanMove(p, 2 + upLv(p, "moveUnits"));
     } else await cpuMove(p);
@@ -2129,17 +2142,19 @@ async function doTop(p, col) {
   } else if (col.key === "produce") {
     await produce(p, human ? await humanProduceTiles(p) : cpuProduceTiles(p));
   } else if (col.key === "trade") {
-    if (p.coins < 1) { if (human) await ask("You need 1 coin to trade.", [{ label: "OK", value: 1 }]); return; }
+    if (p.coins < 1) { if (human) { await ask("You need 1 coin to trade.", [{ label: "Pick another action", value: 1 }]); throw BACK; } return; }
     if (!controlled(p).length) return;
-    const choice = human ? await humanGoods(p, 2 + upLv(p, "tradeRes"), "Trade", `Take ${1 + upLv(p, "tradePop")} popularity`) : cpuTrade(p);
+    const choice = human ? await humanGoods(p, 2 + upLv(p, "tradeRes"), "Trade", `Take ${1 + upLv(p, "tradePop")} popularity`, true) : cpuTrade(p);
+    if (choice && choice.back) throw BACK;
     if (!choice) return;
     p.coins -= 1;
     if (choice.pop) { gain(p, "pop", 1 + upLv(p, "tradePop")); log(`${pname(p)} traded for popularity.`); }
     else placeChosenGoods(p, choice.goods, "traded for");
   } else if (col.key === "bolster") {
-    if (p.coins < 1) { if (human) await ask("You need 1 coin to bolster.", [{ label: "OK", value: 1 }]); return; }
+    if (p.coins < 1) { if (human) { await ask("You need 1 coin to bolster.", [{ label: "Pick another action", value: 1 }]); throw BACK; } return; }
     const n = 2 + upLv(p, "bolster") + (p.structs.includes("armory") ? 1 : 0);
-    const what = human ? (await ask("Bolster: pay 1 coin for…", [{ label: `${n} power`, value: "power", disabled: p.power >= 16 }, { label: "1 battle card", value: "card" }, { label: "Skip", value: "skip", plain: true }])).button : cpuBolster(p);
+    const what = human ? (await ask("Bolster: pay 1 coin for…", [{ label: `${n} power`, value: "power", disabled: p.power >= 16 }, { label: "1 battle card", value: "card" }, BACK_BTN])).button : cpuBolster(p);
+    if (what === "back") throw BACK;
     if (!what || what === "skip") return;
     p.coins -= 1;
     if (what === "power") { gain(p, "power", n); log(`${pname(p)} gained ${n} power.`); } else { gain(p, "cards", 1); log(`${pname(p)} drew a battle card.`); }
@@ -2240,7 +2255,7 @@ async function humanUpgrade(p, free) {
   });
   return { top, bottom };
 }
-async function humanGoods(p, n, title, altLabel) {
+async function humanGoods(p, n, title, altLabel, canBack) {
   return modal((b2, done) => {
     b2.append(el("h2", null, title), el("p", null, `Choose ${n} goods. They appear on a tile you control.${altLabel ? " Or take popularity instead." : ""}`));
     const goods = { grain: 0, wood: 0, iron: 0, oil: 0 };
@@ -2259,7 +2274,7 @@ async function humanGoods(p, n, title, altLabel) {
     go.addEventListener("click", () => done({ goods: { ...goods } }));
     row.appendChild(go);
     if (altLabel) { const pop = el("button", "btn plain", altLabel); pop.type = "button"; pop.disabled = p.pop >= 18; pop.addEventListener("click", () => done({ pop: true })); row.appendChild(pop); }
-    const cancel = el("button", "btn plain", "Skip"); cancel.type = "button"; cancel.addEventListener("click", () => done(null)); row.appendChild(cancel);
+    const cancel = el("button", "btn plain", canBack ? "Change action" : "Skip"); cancel.type = "button"; cancel.addEventListener("click", () => done(canBack ? { back: true } : null)); row.appendChild(cancel);
     b2.appendChild(row); refresh();
   });
 }
@@ -2276,12 +2291,14 @@ function produceAffordable(p) {
   return !((w >= 4 && p.power < 1) || (w >= 6 && p.pop < 1) || (w >= 8 && p.coins < 1));
 }
 async function humanProduceTiles(p) {
-  if (!produceAffordable(p)) { await ask(`You can't pay the produce cost${produceCostText(p)}.`, [{ label: "OK", value: 1 }]); return []; }
+  if (!produceAffordable(p)) { await ask(`You can't pay the produce cost${produceCostText(p)}.`, [{ label: "Pick another action", value: 1 }]); throw BACK; }
   const max = 2 + upLv(p, "produce"), chosen = [];
   while (chosen.length < max) {
     const options = productiveTiles(p).filter(t => !chosen.includes(t));
     if (!options.length) break;
-    const r = await ask(`Produce: click up to ${max - chosen.length} more tile${max - chosen.length > 1 ? "s" : ""} with your workers.`, [{ label: chosen.length ? "Produce now" : "Skip", value: "done", plain: !chosen.length }], options, "#7fe07a");
+    const r = await ask(`Produce: click up to ${max - chosen.length} more tile${max - chosen.length > 1 ? "s" : ""} with your workers.`, chosen.length ? [{ label: "Produce now", value: "done" }, { label: "Undo", value: "undo", plain: true }] : [BACK_BTN], options, "#7fe07a");
+    if (r.button === "back") throw BACK;
+    if (r.button === "undo") { chosen.pop(); continue; }
     if (!r.tile) break;
     chosen.push(r.tile);
   }
@@ -2311,24 +2328,46 @@ async function produce(p, tiles) {
 
 // ---------- moving (human) ----------
 function humanMove(p, max, opts = {}) {
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
     const moved = new Set();
+    // Undo: remember where everything was before each move.
+    const history = [];
+    const snapshot = () => JSON.stringify({ pos: S.units.map(u => [u.id, u.q, u.r]), goods: S.goods, pop: p.pop, log: S.log.length, moved: [...moved] });
+    const undo = () => {
+      const snap = JSON.parse(history.pop());
+      for (const [id, q, r] of snap.pos) { const u = S.units.find(x => x.id === id); if (u) { u.q = q; u.r = r; } }
+      S.goods = snap.goods; p.pop = snap.pop; S.log.length = snap.log;
+      moved.clear(); snap.moved.forEach(x => moved.add(x));
+      cancelSelection(); syncUnits(); syncGoods(); renderAll(); renderLog(); sfx.drop(); prompt();
+    };
     const dests = (u) => reachable(p, u, opts.steps, opts.ignoreRivers);
     const canMove = (u) => u.p === p.i && !moved.has(u.id) && moved.size < max && dests(u).length > 0;
     const sources = () => [...new Map(S.units.filter(canMove).map(u => [key(u.q, u.r), tileAt(u.q, u.r)])).values()];
     const prompt = () => {
       if (!moveUI) return;
       const left = max - moved.size, srcs = sources();
+      if (!left && history.length) {
+        // All moves used: still allow an undo before confirming.
+        $("promptText").textContent = "All moves used.";
+        const bb = $("promptBtns"); bb.replaceChildren();
+        const dn = el("button", "btn", "Done moving"); dn.type = "button"; dn.addEventListener("click", finishMove);
+        const ub = el("button", "btn plain", "↶ Undo"); ub.type = "button"; ub.addEventListener("click", () => { if (!moveUI.busy) undo(); });
+        bb.append(dn, ub); $("prompt").hidden = false; clearHighlight();
+        return;
+      }
       if (!left || !srcs.length) { finishMove(); return; }
       $("promptText").textContent = selected ? `Drop your ${unitName(selected)} on a green tile (or click one).` : `Drag a unit onto a green tile to move it. ${left} move${left > 1 ? "s" : ""} left. Yellow tiles have units that can move.`;
       const bb = $("promptBtns"); bb.replaceChildren();
       const dn = el("button", "btn plain", moved.size ? "Done moving" : "Skip"); dn.type = "button"; dn.addEventListener("click", finishMove);
       bb.appendChild(dn);
+      if (history.length) { const ub = el("button", "btn plain", "↶ Undo"); ub.type = "button"; ub.addEventListener("click", () => { if (!moveUI.busy) undo(); }); bb.appendChild(ub); }
+      else if (!opts.noBack) { const cb = el("button", "btn plain", "Change action"); cb.type = "button"; cb.addEventListener("click", () => { cleanup(); reject(BACK); }); bb.appendChild(cb); }
       $("prompt").hidden = false;
       tempMin(true);
       if (!selected) highlight(srcs, "#ffd24a");
     };
-    const finishMove = () => { tempMin(false); const was = moveUI; cancelSelection(); moveUI = null; clearHighlight(); outlineTile(null); $("prompt").hidden = true; renderer.domElement.classList.remove("grab"); if (was) resolve(); };
+    const cleanup = () => { tempMin(false); cancelSelection(); moveUI = null; clearHighlight(); outlineTile(null); $("prompt").hidden = true; renderer.domElement.classList.remove("grab"); };
+    const finishMove = () => { const was = moveUI; cleanup(); if (was) resolve(); };
     moveUI = {
       busy: false, canMove, dests, sources,
       onSelect: () => prompt(),
@@ -2337,6 +2376,7 @@ function humanMove(p, max, opts = {}) {
         const from = tileAt(u.q, u.r);
         cancelSelection();
         clearHighlight();
+        history.push(snapshot());
         await performMove(p, u, t, from, true);
         moved.add(u.id);
         renderAll();
@@ -2435,7 +2475,7 @@ async function battle(att, def, t) {
   const units = (pl) => unitsOn(t).filter(u => u.p === pl.i);
   const fighters = (pl) => units(pl).filter(u => u.kind !== "worker").length;
   const maxCards = (pl) => Math.min(pl.cards.length, fighters(pl) + (hasMech(pl, "card1") ? 1 : 0));
-  const bonus = (pl, attacking) => (attacking && hasMech(pl, "attack2") ? 2 : 0) + (!attacking && hasMech(pl, "defend2") ? 2 : 0) + (hasMech(pl, "wall2") && units(pl).some(u => u.kind === "worker") ? 2 : 0);
+  const bonus = (pl, attacking) => (attacking && hasMech(pl, "attack2") ? 2 : 0) + (hasMech(pl, "defend2") ? (attacking ? 2 : 3) : 0) + (hasMech(pl, "wall2") && units(pl).some(u => u.kind === "worker") ? 2 : 0);
   const choose = async (pl, foe, attacking) => {
     if (pl.ctrl === "human") { if (humans() > 1) await curtainBattle(pl, foe); return humanBattle(pl, foe, t, maxCards(pl), bonus(pl, attacking)); }
     return cpuBattle(pl, foe, maxCards(pl), bonus(pl, attacking));
@@ -2509,7 +2549,7 @@ async function doPlan(p) {
   if (p.plan === "barge") {
     if (p.power < 1) return;
     p.power -= 1;
-    if (human) await humanMove(p, 1, { steps: 3, ignoreRivers: true });
+    if (human) await humanMove(p, 1, { steps: 3, ignoreRivers: true, noBack: true });
     else { const plan = planMoves(p, 1, 3, true); for (const m of plan) await performMove(p, m.u, m.t, tileAt(m.u.q, m.u.r), false); }
     await afterMove(p);
   } else if (p.plan === "requisition") {
@@ -2925,6 +2965,7 @@ if (location.hash === "#debug") window.__ia = {
   screenOf(id) { const m = unitMeshes.get(id); if (!m) return null; const v = m.position.clone(); v.y += 0.2; v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; },
   screenOfTile(q, r2) { const { x, z } = toWorld(q, r2); const v = new THREE.Vector3(x, Math.max(groundY(x, z), 0), z).project(camera); const r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; },
   reach(id) { const u = S.units.find(x => x.id === id); return reachable(S.players[u.p], u).map(t => [t.q, t.r]); },
+  sync() { syncUnits(true); syncGoods(); renderAll(); },
   meshPositions() { return [...unitMeshes.values()].map(m => [m.position.x, m.position.y, m.position.z, m.rotation.y]); },
   lineup() {
     // Show every nation's pieces side by side (for checking the models).
