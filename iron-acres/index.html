@@ -1,0 +1,1817 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+</head>
+<body>
+<title>Iron Acres</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Stencil+One&family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-screen 3D valley; players strip top-left, menu top-right, the active player's action board docked right (bottom sheet on phones), prompt bar bottom-center. Single "war-office paper" look by design. */
+:root {
+  --sky: #c9d6d3;
+  --paper: #efe6d2;
+  --paper-2: #e2d6bb;
+  --ink: #2b2620;
+  --ink-soft: #6c6252;
+  --rust: #a8452b;
+  --brass: #c39a3b;
+  --steel: #4d5a63;
+  --good: #3f7d3a;
+  --edge: #3d342a;
+  --shadow: rgba(43, 38, 32, .3);
+  --grain: #d9b23f;
+  --wood: #8a5a32;
+  --iron: #7d8790;
+  --oil: #2f2a35;
+  --font-display: "Saira Stencil One", Impact, "Arial Narrow", sans-serif;
+  --font-cond: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --panel-w: 330px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--sky); color: var(--ink); font-family: var(--font-body); font-size: 15px; -webkit-tap-highlight-color: transparent; }
+button { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible { outline: 3px solid var(--brass); outline-offset: 2px; }
+#view { position: fixed; inset: 0; }
+#view canvas { display: block; width: 100%; height: 100%; touch-action: none; outline: none; }
+
+.paper { background: var(--paper); border: 2px solid var(--edge); border-radius: 6px; box-shadow: 0 3px 0 var(--edge), 0 10px 22px var(--shadow); }
+.btn {
+  border: 2px solid var(--edge); border-radius: 5px; background: var(--brass); color: var(--ink);
+  font-family: var(--font-cond); font-weight: 700; font-size: 17px; letter-spacing: .03em;
+  padding: 5px 14px; cursor: pointer; box-shadow: 0 2px 0 var(--edge);
+}
+.btn:active { transform: translateY(2px); box-shadow: none; }
+.btn.plain { background: var(--paper-2); }
+.btn.rust { background: var(--rust); color: #fff6e6; }
+.btn[disabled] { opacity: .5; cursor: default; transform: none; box-shadow: 0 2px 0 var(--edge); }
+.sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; border: 1.5px solid var(--edge); vertical-align: -1px; }
+
+/* ---------- players strip ---------- */
+.players {
+  position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); left: max(16px, env(safe-area-inset-left, 0px));
+  display: grid; gap: 6px; width: 250px; padding: 8px;
+}
+.players h1 { margin: 0 0 2px; font-family: var(--font-display); font-weight: 400; font-size: 24px; line-height: 1; letter-spacing: .02em; }
+.players .round { font-family: var(--font-cond); font-size: 15px; color: var(--ink-soft); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+.pl { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; gap: 2px 8px; align-items: center; padding: 4px 6px 4px 0; border-radius: 4px; background: var(--paper-2); }
+.pl.cur { outline: 2px solid var(--rust); background: #f6eedc; }
+.pl .bar { grid-row: span 2; align-self: stretch; border-radius: 3px 0 0 3px; }
+.pl .nm { font-family: var(--font-cond); font-weight: 700; font-size: 16px; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl .nm small { font-weight: 500; color: var(--ink-soft); font-size: 13px; }
+.pl .stars { font-family: var(--font-cond); font-weight: 700; color: var(--rust); font-size: 16px; white-space: nowrap; }
+.pl .st { grid-column: 2 / 4; display: flex; gap: 10px; font-size: 13px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+.topright { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 10px); right: max(16px, env(safe-area-inset-right, 0px)); display: flex; gap: 8px; }
+.topright .btn { box-shadow: 0 3px 0 var(--edge), 0 8px 16px var(--shadow); }
+
+/* ---------- action board ---------- */
+.board {
+  position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 62px);
+  width: var(--panel-w); max-height: calc(100% - 140px); overflow-y: auto; padding: 10px 12px 12px; display: grid; gap: 8px;
+}
+.mintoggle { display: none; position: absolute; top: 8px; right: 10px; font-size: 14px; padding: 2px 9px; }
+.board h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 22px; line-height: 1.05; }
+.board .who { font-size: 13px; color: var(--ink-soft); }
+.stock { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.stock div { background: var(--paper-2); border-radius: 4px; padding: 3px 4px; text-align: center; font-variant-numeric: tabular-nums; }
+.stock b { display: block; font-family: var(--font-cond); font-size: 19px; line-height: 1.05; }
+.stock small { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
+.stock i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; vertical-align: 1px; }
+.cardsline { font-size: 13px; color: var(--ink-soft); }
+.cardsline .cv { display: inline-block; min-width: 18px; text-align: center; border: 1.5px solid var(--edge); border-radius: 3px; background: #fff8e8; color: var(--ink); font-weight: 700; margin-right: 3px; font-size: 12px; }
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.col {
+  text-align: left; border: 2px solid var(--edge); border-radius: 5px; background: #f7f0e0; padding: 0; cursor: default; overflow: hidden;
+  display: grid; grid-template-rows: auto 1fr auto;
+}
+.col.pick { cursor: pointer; box-shadow: 0 0 0 3px var(--brass); }
+.col.pick:hover { background: #fff8e8; }
+.col.used { opacity: .5; }
+.col .t { padding: 5px 7px 4px; }
+.col .t b, .col .b b { display: block; font-family: var(--font-cond); font-weight: 700; font-size: 16px; letter-spacing: .02em; line-height: 1.1; }
+.col .t span, .col .b span { font-size: 12.5px; line-height: 1.25; color: var(--ink-soft); display: block; }
+.col .b { padding: 5px 7px 6px; background: var(--paper-2); border-top: 1.5px dashed var(--ink-soft); }
+.col .b .cost { color: var(--ink); font-weight: 600; }
+.col .b .cost.short { color: var(--rust); }
+.col .b.done { opacity: .6; }
+.col .tag { font-size: 11px; font-weight: 700; color: var(--rust); text-transform: uppercase; letter-spacing: .05em; padding: 0 7px 4px; }
+.prog { display: grid; gap: 3px; font-size: 13px; }
+.prog .row { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px dotted var(--paper-2); }
+.prog .row.got { color: var(--good); font-weight: 600; }
+.ab { font-size: 12.5px; color: var(--ink-soft); line-height: 1.35; }
+.ab b { color: var(--ink); }
+details summary { cursor: pointer; font-family: var(--font-cond); font-weight: 700; font-size: 15px; letter-spacing: .03em; }
+
+/* ---------- prompt bar & log ---------- */
+.prompt {
+  position: fixed; left: calc(50% - var(--panel-w) / 2); transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  max-width: min(640px, calc(100% - var(--panel-w) - 60px)); padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center;
+}
+.prompt .txt { font-weight: 600; text-align: center; min-width: 0; }
+.prompt .btns { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.log {
+  position: fixed; left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+  width: 250px; max-height: 170px; overflow-y: auto; padding: 6px 9px; font-size: 13px; line-height: 1.35; display: grid; gap: 2px; align-content: start;
+}
+.log div { border-bottom: 1px dotted var(--paper-2); padding-bottom: 2px; }
+.toasts { position: fixed; left: 50%; transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 14px); display: grid; gap: 6px; justify-items: center; pointer-events: none; width: min(440px, calc(100% - 32px)); }
+.toast { padding: 6px 14px; font-weight: 600; text-align: center; animation: pop .25s ease-out; }
+.toast.big { font-family: var(--font-display); font-weight: 400; font-size: 20px; background: #fff3cf; }
+@keyframes pop { from { transform: translateY(-6px); opacity: 0; } }
+.tip { position: fixed; pointer-events: none; padding: 5px 9px; font-size: 13px; max-width: 220px; z-index: 5; }
+.tip b { display: block; font-family: var(--font-cond); font-size: 15px; }
+
+/* ---------- overlays ---------- */
+.overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px)); background: rgba(43, 38, 32, .45); z-index: 10; }
+.overlay.solid { background: radial-gradient(circle at 50% 30%, #d9d0b8, #9eae9f 70%, #6f7f76); }
+.dialog { width: min(560px, 100%); max-height: 100%; overflow-y: auto; padding: 18px 20px 20px; display: grid; gap: 12px; }
+.dialog h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1; }
+.dialog h3 { margin: 4px 0 0; font-family: var(--font-cond); font-size: 18px; letter-spacing: .03em; }
+.dialog p { margin: 0; line-height: 1.45; }
+.dialog ul { margin: 0; padding-left: 20px; line-height: 1.5; }
+.title-big { font-family: var(--font-display); font-size: clamp(44px, 10vw, 72px); line-height: .9; margin: 0; color: var(--ink); }
+.subtitle { font-family: var(--font-cond); font-size: 18px; color: var(--rust); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.seg { display: inline-flex; border: 2px solid var(--edge); border-radius: 5px; overflow: hidden; }
+.seg button { border: 0; padding: 6px 14px; background: var(--paper-2); cursor: pointer; font-family: var(--font-cond); font-weight: 700; font-size: 16px; }
+.seg button.on { background: var(--ink); color: var(--paper); }
+.seats { display: grid; gap: 6px; }
+.seat { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 8px; background: var(--paper-2); border-radius: 5px; }
+.seat label { font-family: var(--font-cond); font-weight: 700; font-size: 16px; display: flex; gap: 6px; align-items: center; }
+.seat select { font: inherit; font-size: 15px; padding: 4px 6px; border: 1.5px solid var(--edge); border-radius: 4px; background: #fbf6ea; min-width: 0; width: 100%; }
+.seat.off select { opacity: .45; }
+.fdesc { font-size: 13px; color: var(--ink-soft); grid-column: 1 / -1; line-height: 1.3; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice { display: grid; gap: 6px; }
+.choice button { text-align: left; border: 2px solid var(--edge); border-radius: 5px; background: #f7f0e0; padding: 6px 10px; cursor: pointer; }
+.choice button:hover { background: #fff8e8; }
+.choice button b { font-family: var(--font-cond); font-size: 17px; display: block; }
+.choice button span { font-size: 13px; color: var(--ink-soft); }
+.choice button[disabled] { opacity: .45; cursor: default; }
+.picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.picker div { background: var(--paper-2); border-radius: 5px; padding: 6px; text-align: center; display: grid; gap: 4px; }
+.picker b { font-family: var(--font-cond); font-size: 22px; }
+.picker .pm { display: flex; justify-content: center; gap: 4px; }
+.picker .pm button { width: 30px; height: 28px; border: 1.5px solid var(--edge); border-radius: 4px; background: #fbf6ea; cursor: pointer; font-weight: 700; }
+.dial { display: flex; flex-wrap: wrap; gap: 5px; }
+.dial button { width: 40px; height: 40px; border: 2px solid var(--edge); border-radius: 50%; background: #f7f0e0; font-family: var(--font-cond); font-weight: 700; font-size: 19px; cursor: pointer; }
+.dial button.on { background: var(--rust); color: #fff6e6; }
+.dial button[disabled] { opacity: .35; cursor: default; }
+.cardpick { display: flex; flex-wrap: wrap; gap: 6px; }
+.cardpick button { width: 42px; height: 56px; border: 2px solid var(--edge); border-radius: 5px; background: #fff8e8; font-family: var(--font-cond); font-weight: 700; font-size: 22px; cursor: pointer; }
+.cardpick button.on { background: var(--brass); transform: translateY(-4px); }
+.cardpick button[disabled] { opacity: .4; cursor: default; }
+.vs { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: center; text-align: center; }
+.vs .big { font-family: var(--font-display); font-size: 46px; line-height: 1; }
+.vs .mid { font-family: var(--font-display); font-size: 22px; color: var(--ink-soft); }
+table.score { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; }
+table.score th, table.score td { padding: 4px 6px; border-bottom: 1px solid var(--paper-2); text-align: right; }
+table.score th:first-child, table.score td:first-child { text-align: left; }
+table.score tr.win td { font-weight: 700; background: #f6e9c4; }
+.scorewrap { overflow-x: auto; }
+.muted { color: var(--ink-soft); font-size: 14px; }
+.loading { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; font-family: var(--font-display); font-size: 28px; padding: 20px; }
+.loading small { display: block; font-family: var(--font-body); font-size: 15px; color: var(--ink-soft); max-width: 320px; margin-top: 6px; }
+
+@media (max-width: 760px) {
+  :root { --panel-w: 0px; }
+  .players { width: auto; top: calc(env(safe-area-inset-top, 0px) + 54px); right: max(16px, env(safe-area-inset-right, 0px)); padding: 6px; gap: 4px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .players h1 { display: none; }
+  .players .round { grid-column: 1 / -1; font-size: 13px; }
+  .topright { left: max(16px, env(safe-area-inset-left, 0px)); justify-content: flex-end; }
+  .topright::before { content: "Iron Acres"; font-family: var(--font-display); font-size: 22px; margin-right: auto; align-self: center; }
+  .pl .st { gap: 6px; font-size: 12px; }
+  .pl .nm { font-size: 14px; }
+  .board { left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px)); width: auto; top: auto; bottom: calc(env(safe-area-inset-bottom, 0px) + 10px); max-height: 46%; }
+  .board.min .cols, .board.min .prog-wrap, .board.min .ab, .board.min .cardsline, .board.min .who { display: none; }
+  .board { position: fixed; }
+  .mintoggle { display: inline-block; }
+  .board h2 { padding-right: 96px; font-size: 19px; }
+  .prompt { max-width: calc(100% - 32px); bottom: auto; top: var(--prompt-top, 130px); width: max-content; }
+  .log { display: none; }
+  .topright .btn { padding: 5px 9px; font-size: 15px; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+</style>
+
+<div id="view"></div>
+<div class="loading" id="loading">Iron Acres<small id="loadMsg">Loading the 3D engine.</small></div>
+
+<div class="players paper" id="players" hidden></div>
+<div class="topright" id="topright" hidden>
+  <button class="btn plain" id="viewBtn" type="button">Board view</button>
+  <button class="btn plain" id="menuBtn" type="button">Menu</button>
+</div>
+<aside class="board paper" id="board" hidden></aside>
+<div class="prompt paper" id="prompt" hidden><span class="txt" id="promptText"></span><span class="btns" id="promptBtns"></span></div>
+<div class="log paper" id="log" hidden></div>
+<div class="toasts" id="toasts"></div>
+<div class="tip paper" id="tip" hidden></div>
+<div class="overlay" id="modal" hidden><div class="dialog paper" id="modalBox" role="dialog" aria-modal="true"></div></div>
+
+<div class="overlay solid" id="setup" hidden>
+  <div class="dialog paper">
+    <div>
+      <p class="title-big">Iron Acres</p>
+      <p class="subtitle">Claim the valley. Build the machines. Hold the Forge.</p>
+    </div>
+    <div class="row-btns" id="continueRow" hidden>
+      <button class="btn" id="continueBtn" type="button">Continue saved game</button>
+      <span class="muted" id="continueInfo"></span>
+    </div>
+    <h3>Game length</h3>
+    <div class="seg" id="modeSeg">
+      <button type="button" data-mode="quick">Quick · about 15 min</button>
+      <button type="button" data-mode="full" class="on">Full · about 45 min</button>
+    </div>
+    <h3>Players</h3>
+    <div class="seats" id="seats"></div>
+    <div class="row-btns">
+      <button class="btn" id="startBtn" type="button">Start game</button>
+      <button class="btn plain" id="rulesBtn" type="button">How to play</button>
+    </div>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script>
+  setTimeout(() => {
+    if (!window.__iaBooted) {
+      const m = document.getElementById("loadMsg");
+      if (m) m.textContent = "The 3D engine didn't load. Your network may block cdn.jsdelivr.net. Try another network or reload.";
+    }
+  }, 12000);
+</script>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+window.__iaBooted = true;
+
+// =====================================================================
+// Rules data
+// =====================================================================
+const SAVE_KEY = "iron-acres-v1";
+const RES = ["grain", "wood", "iron", "oil"];
+const RES_COLOR = { grain: "#d9b23f", wood: "#8a5a32", iron: "#7d8790", oil: "#2f2a35" };
+const TERRAIN = {
+  field:    { name: "Wheat Field", makes: "grain", color: "#d8c065", h: 0.32 },
+  forest:   { name: "Forest", makes: "wood", color: "#5f9448", h: 0.36 },
+  mountain: { name: "Mountain", makes: "iron", color: "#9a958d", h: 0.5 },
+  oil:      { name: "Oil Field", makes: "oil", color: "#5b5550", h: 0.3 },
+  village:  { name: "Village", makes: "workers", color: "#b9c77a", h: 0.34 },
+  lake:     { name: "Lake", makes: null, color: "#6fb3c4", h: 0.08 },
+  forge:    { name: "The Great Forge", makes: null, color: "#8a6f58", h: 0.42 },
+  home:     { name: "Capital", makes: null, color: "#c8bfa6", h: 0.4 }
+};
+const FACTIONS = {
+  brennholt: { name: "Brennholt Union", short: "Brennholt", color: "#b8402f", dark: "#7a2a1f",
+    power: 4, pop: 2, cards: 2, ability: "Ironworks", abilityText: "Building a war machine costs 1 less iron." },
+  velska: { name: "Velska Free State", short: "Velska", color: "#3f6fb0", dark: "#2a4a78",
+    power: 3, pop: 3, cards: 3, ability: "Seafarers", abilityText: "All your units can cross lakes from the start." },
+  kaskar: { name: "Kaskar Khanate", short: "Kaskar", color: "#d6a21f", dark: "#8f6a10",
+    power: 5, pop: 2, cards: 1, ability: "Horse Lords", abilityText: "Your hero moves 1 extra tile." },
+  ostmark: { name: "Ostmark Commonwealth", short: "Ostmark", color: "#4f8f3a", dark: "#2f5c22",
+    power: 2, pop: 4, cards: 2, ability: "Bountiful", abilityText: "Every Produce gives 1 extra grain." }
+};
+const FACTION_KEYS = Object.keys(FACTIONS);
+const MECH_POWERS = [
+  { key: "speed", name: "Treads", text: "Your hero and machines move 1 extra tile." },
+  { key: "wade", name: "Pontoons", text: "Your hero and machines can cross lakes." },
+  { key: "armor", name: "Armor Plate", text: "+2 strength in every battle." },
+  { key: "tactics", name: "Field Radio", text: "Use 1 extra battle card in battles." }
+];
+const COLUMNS = [
+  { key: "move", top: "Move", bottom: "upgrade", bottomName: "Upgrade", res: "oil", coins: 1 },
+  { key: "produce", top: "Produce", bottom: "deploy", bottomName: "Build Machine", res: "iron", coins: 1 },
+  { key: "trade", top: "Trade", bottom: "build", bottomName: "Build Structure", res: "wood", coins: 1 },
+  { key: "bolster", top: "Bolster", bottom: "enlist", bottomName: "Enlist", res: "grain", coins: 2 }
+];
+const UPGRADES = [
+  { key: "moveUnits", name: "Move 3 units", text: "Move lets you move 3 units instead of 2." },
+  { key: "moveCoins", name: "Move: +2 coins", text: "Taking coins with Move gives 2 instead of 1." },
+  { key: "produce", name: "Produce 3 tiles", text: "Produce works on 3 tiles instead of 2." },
+  { key: "tradeRes", name: "Trade 3 goods", text: "Trading gets 3 goods instead of 2." },
+  { key: "tradePop", name: "Trade: +2 popularity", text: "Trading for popularity gives 2 instead of 1." },
+  { key: "bolster", name: "Bolster +3 power", text: "Bolster gives 3 power instead of 2." }
+];
+const STRUCTURES = [
+  { key: "mill", name: "Mill", text: "Its tile produces 1 extra, even with no workers there." },
+  { key: "armory", name: "Armory", text: "Bolster for power gives 1 extra power." },
+  { key: "monument", name: "Monument", text: "Gain 2 popularity right away." },
+  { key: "tower", name: "Watchtower", text: "Its tile counts as 2 territories at the end." }
+];
+const ENLIST = [
+  { key: "power", name: "Veterans", text: "Gain 3 power." },
+  { key: "coins", name: "Financiers", text: "Gain 4 coins." },
+  { key: "pop", name: "Heralds", text: "Gain 2 popularity." },
+  { key: "cards", name: "Spies", text: "Draw 2 battle cards." }
+];
+const STARS = [
+  { key: "upgrades", name: "All 6 upgrades" },
+  { key: "mechs", name: "All 4 machines" },
+  { key: "structures", name: "All 4 structures" },
+  { key: "enlist", name: "All 4 enlisted" },
+  { key: "workers", name: "8 workers" },
+  { key: "pop", name: "18 popularity" },
+  { key: "power", name: "16 power" },
+  { key: "battle1", name: "First battle won" },
+  { key: "battle2", name: "Second battle won" }
+];
+const MODES = {
+  quick: { radius: 3, stars: 4, rounds: 22, label: "Quick" },
+  full: { radius: 4, stars: 6, rounds: 45, label: "Full" }
+};
+const DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+const SQ3 = Math.sqrt(3);
+
+// =====================================================================
+// Helpers
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const key = (q, r) => q + "," + r;
+const hexDist = (q, r) => (Math.abs(q) + Math.abs(r) + Math.abs(q + r)) / 2;
+const dist = (a, b) => hexDist(a.q - b.q, a.r - b.r);
+const toWorld = (q, r) => ({ x: SQ3 * (q + r / 2), z: 1.5 * r });
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+  del(k) { try { localStorage.removeItem(k); } catch {} }
+};
+const TEST = location.hash === "#autotest";
+
+// =====================================================================
+// Game state
+// =====================================================================
+let S = null;   // the whole saved game
+let busy = false;
+
+function newGame(mode, seats) {
+  const M = MODES[mode];
+  const n = seats.length;
+  const corners = { 2: [0, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4] }[n];
+  const state = { v: 1, mode, target: M.stars, maxRounds: M.rounds, radius: M.radius, round: 1, turn: 0, tiles: [], units: [], structures: [], deck: [], discard: [], log: [], nextId: 1, over: false };
+  // Map
+  let ok = false, tries = 0;
+  while (!ok && tries++ < 80) {
+    state.tiles = [];
+    const R = M.radius;
+    const coords = [];
+    for (let q = -R; q <= R; q++) for (let r = Math.max(-R, -q - R); r <= Math.min(R, -q + R); r++) coords.push([q, r]);
+    const homeKeys = new Map(corners.map((c, i) => [key(DIRS[c][0] * R, DIRS[c][1] * R), i]));
+    const bag = [];
+    const weights = { field: 3, forest: 3, mountain: 3, oil: 2.6, village: 2.4, lake: 1.6 };
+    const total = Object.values(weights).reduce((a, b) => a + b, 0);
+    const free = coords.length - 1 - n;
+    for (const t in weights) for (let i = 0; i < Math.round(free * weights[t] / total); i++) bag.push(t);
+    while (bag.length < free) bag.push("field");
+    shuffle(bag);
+    for (const [q, r] of coords) {
+      const k = key(q, r);
+      let type;
+      if (q === 0 && r === 0) type = "forge";
+      else if (homeKeys.has(k)) type = "home";
+      else type = bag.pop() || "field";
+      state.tiles.push({ q, r, type, home: homeKeys.has(k) ? homeKeys.get(k) : null });
+    }
+    // Fair starts: every capital gets two different resource tiles and a village next to it.
+    const T = (q, r) => state.tiles.find(t => t.q === q && t.r === r);
+    const kinds = ["field", "forest", "mountain", "oil"];
+    corners.forEach((c, i) => {
+      const hq = DIRS[c][0] * R, hr = DIRS[c][1] * R;
+      const ns = DIRS.map(([dq, dr]) => T(hq + dq, hr + dr)).filter(Boolean);
+      const edge = ns.filter(t => hexDist(t.q, t.r) === R);
+      const inward = ns.filter(t => hexDist(t.q, t.r) < R);
+      edge.forEach((t, j) => { if (t.type !== "home") t.type = kinds[(i + j * 2) % 4]; });
+      inward.forEach(t => { t.type = "village"; });
+    });
+    for (const [dq, dr] of DIRS) { const t = T(dq, dr); if (t && t.type === "lake") t.type = "field"; }
+    // Everything reachable without crossing lakes?
+    const land = state.tiles.filter(t => t.type !== "lake");
+    const seen = new Set([key(0, 0)]), queue = [T(0, 0)];
+    while (queue.length) {
+      const t = queue.shift();
+      for (const [dq, dr] of DIRS) {
+        const n2 = T(t.q + dq, t.r + dr);
+        if (n2 && n2.type !== "lake" && !seen.has(key(n2.q, n2.r))) { seen.add(key(n2.q, n2.r)); queue.push(n2); }
+      }
+    }
+    ok = seen.size === land.length;
+  }
+  // Battle cards
+  for (const [v, c] of [[2, 16], [3, 12], [4, 8], [5, 6]]) for (let i = 0; i < c; i++) state.deck.push(v);
+  shuffle(state.deck);
+  // Players
+  S = state;
+  state.players = seats.map((s, i) => {
+    const f = FACTIONS[s.faction];
+    const home = state.tiles.find(t => t.home === i);
+    const p = {
+      i, faction: s.faction, ctrl: s.ctrl, label: s.ctrl === "human" ? `Player ${seats.slice(0, i + 1).filter(x => x.ctrl === "human").length}` : `CPU ${cap1(s.ctrl)}`,
+      coins: 5, power: f.power, pop: f.pop, cards: [], res: { grain: 0, wood: 0, iron: 0, oil: 0 },
+      lastCol: null, ups: [], costs: { upgrade: 3, deploy: 3, build: 3, enlist: 3 },
+      mechs: 0, structs: [], enlisted: [], stars: [], battleStars: 0, forge: false, home: { q: home.q, r: home.r }
+    };
+    for (let k = 0; k < f.cards; k++) p.cards.push(drawCard());
+    return p;
+  });
+  for (const p of state.players) {
+    addUnit(p.i, "leader", p.home.q, p.home.r);
+    const ns = neighborsOf(p.home).filter(t => hexDist(t.q, t.r) === state.radius && t.type !== "home");
+    for (const t of ns) addUnit(p.i, "worker", t.q, t.r);
+  }
+  if (mode === "quick") {
+    // Quick games start a little further along.
+    for (const p of state.players) {
+      p.ups.push("produce"); p.costs.upgrade = 2; p.costs.deploy = 2;
+      p.res.grain = 1; p.res.wood = 1; p.res.iron = 1; p.res.oil = 1;
+      const v = neighborsOf(p.home).find(t => t.type === "village");
+      if (v) addUnit(p.i, "worker", v.q, v.r);
+    }
+  }
+  return state;
+}
+const cap1 = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+function drawCard() {
+  if (!S.deck.length) { S.deck = shuffle(S.discard); S.discard = []; }
+  return S.deck.pop() || 2;
+}
+function addUnit(p, kind, q, r) { const u = { id: S.nextId++, p, kind, q, r }; S.units.push(u); return u; }
+function tileAt(q, r) { return S.tiles.find(t => t.q === q && t.r === r); }
+function neighborsOf(t) { return DIRS.map(([dq, dr]) => tileAt(t.q + dq, t.r + dr)).filter(Boolean); }
+function unitsOn(t) { return S.units.filter(u => u.q === t.q && u.r === t.r); }
+function structOn(t) { return S.structures.find(s => s.q === t.q && s.r === t.r); }
+function workersOf(p) { return S.units.filter(u => u.p === p.i && u.kind === "worker"); }
+function cur() { return S.players[S.turn]; }
+function F(p) { return FACTIONS[p.faction]; }
+function hasPower(p, key) { return MECH_POWERS.slice(0, p.mechs).some(m => m.key === key); }
+function upLv(p, k) { return p.ups.includes(k) ? 1 : 0; }
+function costOf(p, bottom) { let c = p.costs[bottom]; if (bottom === "deploy" && p.faction === "brennholt") c -= 1; return Math.max(1, c); }
+function bottomDone(p, bottom) {
+  return { upgrade: p.ups.length >= 6, deploy: p.mechs >= 4, build: p.structs.length >= 4, enlist: p.enlisted.length >= 4 }[bottom];
+}
+function canBottom(p, col) { return !bottomDone(p, col.bottom) && p.res[col.res] >= costOf(p, col.bottom); }
+function log(msg) { S.log.push(msg); if (S.log.length > 60) S.log.shift(); renderLog(); }
+function pname(p) { return F(p).short; }
+
+// ---------- movement ----------
+function canEnter(p, unit, t) {
+  if (!t) return false;
+  if (t.type === "home" && t.home !== p.i) return false;
+  if (t.type === "lake") {
+    if (p.faction === "velska") return true;
+    if (unit.kind !== "worker" && hasPower(p, "wade")) return true;
+    return false;
+  }
+  return true;
+}
+function enemyOn(p, t) { return unitsOn(t).filter(u => u.p !== p.i); }
+function stepsFor(p, unit) {
+  if (unit.kind === "worker") return 1;
+  let s = 1;
+  if (hasPower(p, "speed")) s++;
+  if (unit.kind === "leader" && p.faction === "kaskar") s++;
+  return s;
+}
+function reachable(p, unit) {
+  const start = tileAt(unit.q, unit.r), max = stepsFor(p, unit);
+  const out = new Map(), queue = [[start, 0]], seen = new Set([key(start.q, start.r)]);
+  while (queue.length) {
+    const [t, d] = queue.shift();
+    if (d >= max) continue;
+    for (const n of neighborsOf(t)) {
+      const k = key(n.q, n.r);
+      if (seen.has(k) || !canEnter(p, unit, n)) continue;
+      const enemies = enemyOn(p, n);
+      if (unit.kind === "worker" && enemies.length) continue;
+      seen.add(k);
+      out.set(k, n);
+      if (!enemies.length) queue.push([n, d + 1]);   // you stop when you meet an enemy
+    }
+  }
+  return [...out.values()];
+}
+function retreatHome(u) { const p = S.players[u.p]; u.q = p.home.q; u.r = p.home.r; }
+
+// ---------- territory & scoring ----------
+function territoriesOf(p) {
+  let n = 0;
+  for (const t of S.tiles) {
+    if (t.type === "home" || t.type === "lake") continue;
+    const us = unitsOn(t);
+    const s = structOn(t);
+    let owner = us.length ? us[0].p : (s ? s.p : null);
+    if (owner !== p.i) continue;
+    let v = t.type === "forge" ? 3 : 1;
+    if (s && s.kind === "tower" && s.p === p.i) v += 1;
+    n += v;
+  }
+  return n;
+}
+function tier(p) { return p.pop >= 13 ? 2 : p.pop >= 7 ? 1 : 0; }
+function scoreOf(p) {
+  const tr = tier(p);
+  const starV = [3, 4, 5][tr], terrV = [2, 3, 4][tr], resV = [1, 2, 3][tr];
+  const totalRes = RES.reduce((s, r) => s + p.res[r], 0);
+  const parts = {
+    coins: p.coins,
+    stars: p.stars.length * starV,
+    land: territoriesOf(p) * terrV,
+    goods: Math.floor(totalRes / 2) * resV
+  };
+  parts.total = parts.coins + parts.stars + parts.land + parts.goods;
+  return parts;
+}
+function checkStars(p) {
+  const want = {
+    upgrades: p.ups.length >= 6, mechs: p.mechs >= 4, structures: p.structs.length >= 4, enlist: p.enlisted.length >= 4,
+    workers: workersOf(p).length >= 8, pop: p.pop >= 18, power: p.power >= 16,
+    battle1: p.battleStars >= 1, battle2: p.battleStars >= 2
+  };
+  for (const s of STARS) {
+    if (want[s.key] && !p.stars.includes(s.key)) {
+      p.stars.push(s.key);
+      log(`★ ${pname(p)} earned a star: ${s.name}.`);
+      toast(`★ ${pname(p)}: ${s.name}`, true);
+      sfx.star();
+    }
+  }
+  if (p.stars.length >= S.target && !S.over) { S.over = true; S.endReason = `${pname(p)} placed their ${S.target}th star.`; }
+}
+function gain(p, what, n) {
+  if (what === "power") p.power = clamp(p.power + n, 0, 16);
+  else if (what === "pop") p.pop = clamp(p.pop + n, 0, 18);
+  else if (what === "coins") p.coins = Math.max(0, p.coins + n);
+  else p.res[what] = Math.max(0, p.res[what] + n);
+}
+
+// =====================================================================
+// Three.js scene
+// =====================================================================
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+view.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#c9d6d3");
+scene.fog = new THREE.Fog("#c9d6d3", 30, 70);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.15; controls.minDistance = 6; controls.maxDistance = 34; controls.screenSpacePanning = false;
+controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+scene.add(new THREE.HemisphereLight("#fff4e0", "#56624a", 1.05));
+const sun = new THREE.DirectionalLight("#ffe9c8", 1.8);
+sun.position.set(10, 18, 7); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -16, right: 16, top: 16, bottom: -16, near: 1, far: 50 });
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+scene.add(sun);
+const sea = new THREE.Mesh(new THREE.CircleGeometry(80, 48).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: "#5d97a6", roughness: 0.4, transparent: true, opacity: 0.9 }));
+sea.position.y = 0.18; sea.receiveShadow = true; scene.add(sea);
+
+let viewMode = "3d";
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.fov = w < h ? 55 : 40; camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+function setView(mode) {
+  viewMode = mode;
+  const R = S ? S.radius : 4, narrow = view.clientWidth < 760;
+  const side = narrow ? 0 : 0.19 * R;   // shift right of center so the map clears the action board
+  controls.target.set(side * 4, 0, narrow ? 2.2 : 0);
+  if (mode === "board") {
+    camera.position.set(side * 4, R * 4.3 + (narrow ? 8 : 4), 0.01 + (narrow ? 2.2 : 0));
+    controls.enableRotate = false; controls.maxPolarAngle = 0.01; controls.minPolarAngle = 0;
+  } else {
+    camera.position.set(side * 4, R * 2.75 + (narrow ? 6 : 3.5), R * 2.75 + (narrow ? 8 : 4.5));
+    controls.enableRotate = true; controls.maxPolarAngle = 1.15; controls.minPolarAngle = 0.2;
+  }
+  $("viewBtn").textContent = mode === "board" ? "3D view" : "Board view";
+}
+$("viewBtn").addEventListener("click", () => setView(viewMode === "3d" ? "board" : "3d"));
+
+// ---------- model helpers ----------
+const MATS = {};
+const mat = (c, extra) => { const k = c + (extra ? JSON.stringify(extra) : ""); return MATS[k] || (MATS[k] = new THREE.MeshStandardMaterial({ color: c, flatShading: true, roughness: 0.85, ...(extra || {}) })); };
+const GEOS = {};
+const geo = (k, f) => GEOS[k] || (GEOS[k] = f());
+function part(g, m, x = 0, y = 0, z = 0, ry = 0) { const o = new THREE.Mesh(g, m); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = true; o.receiveShadow = true; return o; }
+const box = (w, h, d, c, x, y, z, ry) => part(geo(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)), mat(c), x, y + h / 2, z, ry);
+const cyl = (rt, rb, h, s, c, x, y, z) => part(geo(`c${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s)), mat(c), x, y + h / 2, z);
+const cone = (r, h, s, c, x, y, z, ry = 0) => part(geo(`k${r},${h},${s}`, () => new THREE.ConeGeometry(r, h, s)), mat(c), x, y + h / 2, z, ry);
+const ball = (r, c, x, y, z) => part(geo(`s${r}`, () => new THREE.SphereGeometry(r, 7, 5)), mat(c), x, y, z);
+
+// ---------- tiles ----------
+const tileRoot = new THREE.Group(); scene.add(tileRoot);
+const tileMeshes = new Map();
+const rings = new Map();
+const smokes = [];
+function rnd(seed) { let a = seed * 9301 + 49297; return () => { a = (a * 9301 + 49297) % 233280; return a / 233280; }; }
+function buildBoard() {
+  tileRoot.clear(); tileMeshes.clear(); rings.clear(); smokes.length = 0;
+  const hexGeo = new THREE.CylinderGeometry(0.97, 0.97, 1, 6, 1).translate(0, 0.5, 0);
+  const ringGeo = new THREE.RingGeometry(0.0, 0.93, 6, 1).rotateX(-Math.PI / 2).rotateY(Math.PI / 6);
+  for (const t of S.tiles) {
+    const T = TERRAIN[t.type];
+    const { x, z } = toWorld(t.q, t.r);
+    t.x = x; t.z = z; t.h = T.h;
+    const color = t.type === "home" ? FACTIONS[S.players[t.home].faction].color : T.color;
+    const m = new THREE.Mesh(hexGeo, mat(t.type === "home" ? "#cfc5aa" : color));
+    m.position.set(x, 0, z); m.scale.y = T.h; m.receiveShadow = true;
+    m.userData.tile = t;
+    tileRoot.add(m); tileMeshes.set(key(t.q, t.r), m);
+    const g = new THREE.Group(); g.position.set(x, T.h, z);
+    const R = rnd((t.q + 20) * 131 + (t.r + 20) * 17);
+    if (t.type === "field") {
+      for (let i = 0; i < 5; i++) g.add(box(1.0, 0.07, 0.11, "#e9cf6a", 0, 0, -0.5 + i * 0.25));
+      g.add(box(0.08, 0.25, 0.08, "#7a5a32", 0.55, 0, 0.25));
+    } else if (t.type === "forest") {
+      for (const [ox, oz] of [[0.3, 0.2], [-0.32, 0.25], [0.02, -0.38], [-0.15, -0.05]]) {
+        const s = 0.8 + R() * 0.45;
+        g.add(cyl(0.05, 0.06, 0.18 * s, 5, "#6e4526", ox, 0, oz));
+        g.add(cone(0.24 * s, 0.6 * s, 6, "#3e7a35", ox, 0.14 * s, oz));
+      }
+    } else if (t.type === "mountain") {
+      g.add(cone(0.82, 1.05, 6, "#8b8780", 0, 0, 0));
+      g.add(cone(0.32, 0.4, 6, "#eef0f0", 0, 0.66, 0));
+      g.add(box(0.14, 0.12, 0.1, "#3a332c", 0.48, 0, 0.42, 0.5));
+    } else if (t.type === "oil") {
+      g.add(cyl(0.3, 0.32, 0.02, 10, "#1f1b22", -0.25, 0, 0.2));
+      const der = new THREE.Group(); der.position.set(0.2, 0, -0.1);
+      for (const [dx, dz] of [[-0.14, -0.14], [0.14, -0.14], [-0.14, 0.14], [0.14, 0.14]]) {
+        const leg = box(0.04, 0.85, 0.04, "#3a3238", dx * 0.6, 0, dz * 0.6); leg.rotation.set(dz * 0.3, 0, -dx * 0.3); der.add(leg);
+      }
+      der.add(box(0.12, 0.08, 0.12, "#a8452b", 0, 0.82, 0));
+      g.add(der);
+      g.add(cyl(0.12, 0.12, 0.25, 8, "#6c6252", -0.45, 0, -0.3));
+    } else if (t.type === "village") {
+      for (const [ox, oz, ry] of [[-0.3, -0.2, 0.3], [0.28, -0.1, -0.4], [0, 0.32, 0.9]]) {
+        g.add(box(0.3, 0.22, 0.26, "#efe1c0", ox, 0, oz, ry));
+        g.add(cone(0.24, 0.2, 4, "#9c4a35", ox, 0.22, oz, ry + Math.PI / 4));
+      }
+    } else if (t.type === "forge") {
+      g.add(box(1.0, 0.55, 0.8, "#7a4a35", 0, 0, 0.05));
+      g.add(box(1.06, 0.08, 0.86, "#3d342a", 0, 0.55, 0.05));
+      g.add(cyl(0.13, 0.17, 1.25, 8, "#5a3b2c", 0.3, 0.55, -0.15));
+      g.add(cyl(0.11, 0.15, 0.95, 8, "#5a3b2c", -0.3, 0.55, -0.15));
+      g.add(box(0.3, 0.3, 0.02, "#ff9a3a", 0, 0.08, 0.46));
+      const glow = MATS.glow || (MATS.glow = new THREE.MeshStandardMaterial({ color: "#ffb04a", emissive: "#ff7a00", emissiveIntensity: 1.1 }));
+      const gl = new THREE.Mesh(geo("glow", () => new THREE.BoxGeometry(0.28, 0.26, 0.02)), glow); gl.position.set(0, 0.22, 0.465); g.add(gl);
+      for (let i = 0; i < 5; i++) {
+        const s = new THREE.Mesh(geo("puff", () => new THREE.IcosahedronGeometry(0.14, 0)), mat("#8e8a86", { transparent: true, opacity: 0.7 }));
+        s.userData = { base: new THREE.Vector3(x + 0.3, T.h + 1.85, z - 0.15), off: i / 5 };
+        scene.add(s); smokes.push(s); tileRoot.add(s);
+      }
+    } else if (t.type === "home") {
+      const f = FACTIONS[S.players[t.home].faction];
+      g.add(box(0.8, 0.4, 0.8, "#bdb7a8", 0, 0, 0));
+      for (const [ox, oz] of [[-0.38, -0.38], [0.38, -0.38], [-0.38, 0.38], [0.38, 0.38]]) { g.add(cyl(0.12, 0.13, 0.6, 7, "#a9a294", ox, 0, oz)); g.add(cone(0.15, 0.25, 7, f.color, ox, 0.6, oz)); }
+      g.add(box(0.36, 0.75, 0.36, "#cdc6b4", 0, 0, 0));
+      g.add(cone(0.3, 0.32, 4, f.dark, 0, 0.75, 0, Math.PI / 4));
+      g.add(cyl(0.015, 0.015, 0.55, 4, "#3d342a", 0, 1.0, 0));
+      g.add(box(0.32, 0.2, 0.015, f.color, 0.16, 1.32, 0));
+    }
+    g.traverse(o => { o.userData.tile = t; });
+    tileRoot.add(g);
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: "#ffd24a", transparent: true, opacity: 0.45, depthWrite: false }));
+    ring.position.set(x, T.h + 0.04, z); ring.visible = false; ring.renderOrder = 2;
+    const edge = new THREE.LineLoop(geo("hexline", () => { const pts = []; for (let i = 0; i < 6; i++) { const a = Math.PI / 6 + i * Math.PI / 3; pts.push(new THREE.Vector3(Math.cos(a) * 0.93, 0, Math.sin(a) * 0.93)); } return new THREE.BufferGeometry().setFromPoints(pts); }), new THREE.LineBasicMaterial({ color: "#3d342a" }));
+    edge.position.y = 0.01; ring.add(edge);
+    tileRoot.add(ring); rings.set(key(t.q, t.r), ring);
+  }
+}
+
+// ---------- units ----------
+const unitRoot = new THREE.Group(); scene.add(unitRoot);
+const unitMeshes = new Map();
+function unitModel(u) {
+  const f = FACTIONS[S.players[u.p].faction];
+  const g = new THREE.Group();
+  if (u.kind === "worker") {
+    g.add(cyl(0.06, 0.09, 0.22, 7, f.color, 0, 0, 0));
+    g.add(ball(0.065, "#efc9a2", 0, 0.29, 0));
+    g.add(cyl(0.08, 0.08, 0.025, 8, "#6c5230", 0, 0.34, 0));
+  } else if (u.kind === "leader") {
+    g.add(box(0.14, 0.14, 0.38, "#6b4a2e", 0, 0.16, 0));
+    for (const [x, z] of [[-0.05, -0.13], [0.05, -0.13], [-0.05, 0.13], [0.05, 0.13]]) g.add(box(0.04, 0.17, 0.04, "#5a3d25", x, 0, z));
+    const neck = box(0.08, 0.2, 0.08, "#6b4a2e", 0, 0.24, 0.18); neck.rotation.x = 0.5; g.add(neck);
+    g.add(box(0.08, 0.08, 0.16, "#6b4a2e", 0, 0.37, 0.25));
+    g.add(cyl(0.06, 0.08, 0.2, 7, f.color, 0, 0.3, -0.02));
+    g.add(ball(0.06, "#efc9a2", 0, 0.56, -0.02));
+    g.add(cyl(0.008, 0.008, 0.6, 4, "#3d342a", -0.1, 0.3, -0.05));
+    g.add(box(0.012, 0.13, 0.2, f.color, -0.1, 0.75, -0.15));
+  } else {
+    g.add(box(0.06, 0.24, 0.07, "#3d3a38", -0.1, 0, 0));
+    g.add(box(0.06, 0.24, 0.07, "#3d3a38", 0.1, 0, 0));
+    g.add(box(0.12, 0.04, 0.16, "#3d3a38", -0.1, 0, 0.03));
+    g.add(box(0.12, 0.04, 0.16, "#3d3a38", 0.1, 0, 0.03));
+    g.add(box(0.34, 0.26, 0.28, f.color, 0, 0.24, 0));
+    g.add(box(0.36, 0.05, 0.3, f.dark, 0, 0.5, 0));
+    g.add(box(0.16, 0.09, 0.02, "#d9e6ea", 0, 0.37, 0.145));
+    g.add(cyl(0.035, 0.04, 0.22, 6, "#2f2a2a", -0.1, 0.5, -0.1));
+    g.add(box(0.06, 0.06, 0.22, "#4d5a63", 0.21, 0.32, 0.08));
+    g.add(box(0.06, 0.06, 0.22, "#4d5a63", -0.21, 0.32, 0.08));
+    g.scale.setScalar(1.15);
+  }
+  g.traverse(o => { o.userData.unit = u; });
+  return g;
+}
+function slotOffset(i, n) {
+  if (n === 1) return [0, 0];
+  const a = (i / n) * Math.PI * 2 + 0.6, r = n > 4 ? 0.48 : 0.36;
+  return [Math.cos(a) * r, Math.sin(a) * r];
+}
+function syncUnits(instant = false) {
+  const live = new Set(S.units.map(u => u.id));
+  for (const [id, m] of unitMeshes) if (!live.has(id)) { unitRoot.remove(m); unitMeshes.delete(id); }
+  const byTile = new Map();
+  for (const u of S.units) { const k = key(u.q, u.r); if (!byTile.has(k)) byTile.set(k, []); byTile.get(k).push(u); }
+  for (const [k, list] of byTile) {
+    list.sort((a, b) => ({ leader: 0, mech: 1, worker: 2 }[a.kind] - { leader: 0, mech: 1, worker: 2 }[b.kind]) || a.p - b.p);
+    const t = tileAt(list[0].q, list[0].r);
+    const top = t.type === "mountain" ? 0.12 : t.type === "home" ? 0.42 : 0.02;
+    list.forEach((u, i) => {
+      let m = unitMeshes.get(u.id);
+      if (!m) { m = unitModel(u); unitRoot.add(m); unitMeshes.set(u.id, m); instant = instant || false; m.position.set(t.x, t.h + top, t.z); }
+      const [ox, oz] = slotOffset(i, list.length);
+      m.userData.target = new THREE.Vector3(t.x + ox, t.h + top, t.z + oz);
+      if (instant) m.position.copy(m.userData.target);
+    });
+  }
+}
+const structRoot = new THREE.Group(); scene.add(structRoot);
+function syncStructures() {
+  structRoot.clear();
+  for (const s of S.structures) {
+    const t = tileAt(s.q, s.r), f = FACTIONS[S.players[s.p].faction];
+    const g = new THREE.Group();
+    if (s.kind === "mill") {
+      g.add(cyl(0.09, 0.13, 0.42, 7, "#efe1c0", 0, 0, 0)); g.add(cone(0.12, 0.14, 7, f.color, 0, 0.42, 0));
+      for (let i = 0; i < 4; i++) { const b = box(0.04, 0.3, 0.01, "#e8dcc3", 0, 0, 0); b.position.set(0, 0.36, 0.13); b.rotation.z = i * Math.PI / 2 + 0.4; b.translateY(0.13); g.add(b); }
+    } else if (s.kind === "armory") {
+      g.add(box(0.32, 0.22, 0.26, "#8a8378", 0, 0, 0)); g.add(cone(0.24, 0.16, 4, f.color, 0, 0.22, 0, Math.PI / 4));
+      g.add(box(0.2, 0.03, 0.02, "#3d342a", 0, 0.12, 0.135));
+    } else if (s.kind === "monument") {
+      g.add(box(0.22, 0.06, 0.22, "#bdb7a8", 0, 0, 0)); g.add(cone(0.08, 0.6, 4, "#d8d2c2", 0, 0.06, 0, Math.PI / 4)); g.add(box(0.1, 0.04, 0.02, f.color, 0, 0.2, 0.06));
+    } else {
+      g.add(cyl(0.08, 0.1, 0.7, 6, "#8a6a48", 0, 0, 0)); g.add(box(0.24, 0.08, 0.24, "#6b4a2e", 0, 0.7, 0)); g.add(cone(0.17, 0.18, 4, f.color, 0, 0.78, 0, Math.PI / 4));
+    }
+    g.position.set(t.x - 0.5, t.h + (t.type === "mountain" ? 0.05 : 0), t.z - 0.3);
+    g.traverse(o => { o.userData.tile = t; });
+    structRoot.add(g);
+  }
+}
+
+// ---------- highlights ----------
+let highlighted = new Set();
+function highlight(tiles, color = "#ffd24a") {
+  clearHighlight();
+  for (const t of tiles) { const r = rings.get(key(t.q, t.r)); if (r) { r.visible = true; r.material.color.set(color); r.position.y = t.h + (t.type === "mountain" ? 1.0 : t.type === "home" || t.type === "forge" ? 0.6 : 0.12); highlighted.add(key(t.q, t.r)); } }
+}
+function clearHighlight() { for (const k of highlighted) rings.get(k).visible = false; highlighted.clear(); }
+
+// =====================================================================
+// Sound
+// =====================================================================
+let actx = null, soundOn = store.get("ia-sound") !== "0";
+function tone(f, d, type = "triangle", v = 0.045, slide = 0, delay = 0) {
+  if (!soundOn || TEST) return;
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime + delay;
+    o.type = type; o.frequency.setValueAtTime(f, t); if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, f + slide), t + d);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + d + 0.02);
+  } catch {}
+}
+const sfx = {
+  click: () => tone(620, 0.05, "triangle", 0.03),
+  move: () => tone(300, 0.08, "square", 0.025, -60),
+  build: () => { tone(180, 0.14, "square", 0.04, -40); tone(260, 0.12, "triangle", 0.04, 0, 0.09); },
+  star: () => { tone(523, 0.1); tone(659, 0.1, "triangle", 0.045, 0, 0.08); tone(880, 0.22, "triangle", 0.05, 0, 0.16); },
+  battle: () => { tone(110, 0.4, "sawtooth", 0.05, -40); tone(90, 0.5, "square", 0.04, -30, 0.12); }
+};
+
+// =====================================================================
+// UI: panels
+// =====================================================================
+function renderPlayers() {
+  const el = $("players");
+  el.replaceChildren();
+  const h = document.createElement("h1"); h.textContent = "Iron Acres";
+  const r = document.createElement("div"); r.className = "round";
+  r.textContent = `Round ${S.round} · ${MODES[S.mode].label} game · ${S.target} stars to end`;
+  el.append(h, r);
+  for (const p of S.players) {
+    const f = F(p);
+    const d = document.createElement("div"); d.className = "pl" + (p.i === S.turn ? " cur" : "");
+    d.innerHTML = `<span class="bar" style="background:${f.color}"></span><span class="nm"></span><span class="stars"></span><span class="st"></span>`;
+    d.querySelector(".nm").innerHTML = `${f.short} <small>${p.label}</small>`;
+    d.querySelector(".stars").textContent = `★ ${p.stars.length}/${S.target}`;
+    d.querySelector(".st").textContent = window.innerWidth < 760 ? `${p.coins} coins · ${p.power} pwr · ${p.pop} pop` : `${p.coins} coins · ${p.power} power · ${p.pop} popularity`;
+    el.appendChild(d);
+  }
+  requestAnimationFrame(() => document.documentElement.style.setProperty("--prompt-top", (el.getBoundingClientRect().bottom + 8) + "px"));
+}
+let pickColumns = null;
+function renderBoard() {
+  const p = cur(), f = F(p), el = $("board");
+  const showSecrets = p.ctrl === "human";
+  el.replaceChildren();
+  const h = document.createElement("h2"); h.textContent = f.name; h.style.color = f.dark;
+  const tg = document.createElement("button"); tg.className = "btn plain mintoggle"; tg.type = "button";
+  tg.textContent = el.classList.contains("min") ? "Show board" : "Hide board";
+  tg.addEventListener("click", () => { el.classList.toggle("min"); tg.textContent = el.classList.contains("min") ? "Show board" : "Hide board"; });
+  el.appendChild(tg);
+  const who = document.createElement("div"); who.className = "who";
+  who.textContent = `${p.label}'s turn · ${workersOf(p).length} workers · ${p.mechs} machines · ${territoriesOf(p)} territories`;
+  el.append(h, who);
+  const stock = document.createElement("div"); stock.className = "stock";
+  for (const r of RES) {
+    const d = document.createElement("div");
+    d.innerHTML = `<b>${p.res[r]}</b><small><i style="background:${RES_COLOR[r]}"></i>${r}</small>`;
+    stock.appendChild(d);
+  }
+  el.appendChild(stock);
+  const cl = document.createElement("div"); cl.className = "cardsline";
+  if (showSecrets) cl.innerHTML = `Battle cards: ${p.cards.length ? p.cards.slice().sort((a, b) => b - a).map(v => `<span class="cv">${v}</span>`).join("") : "none"}`;
+  else cl.textContent = `Battle cards: ${p.cards.length} (hidden)`;
+  el.appendChild(cl);
+  const cols = document.createElement("div"); cols.className = "cols";
+  for (const c of COLUMNS) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "col";
+    const used = p.lastCol === c.key;
+    if (used) b.classList.add("used");
+    if (pickColumns && !used) { b.classList.add("pick"); b.addEventListener("click", () => pickColumns(c.key)); }
+    else b.disabled = !pickColumns;
+    const done = bottomDone(p, c.bottom), cost = costOf(p, c.bottom), short = p.res[c.res] < cost;
+    b.innerHTML = `<div class="t"><b>${c.top}</b><span>${topText(p, c.key)}</span></div>
+      ${used ? '<div class="tag">Used last turn</div>' : "<div></div>"}
+      <div class="b${done ? " done" : ""}"><b>${c.bottomName}</b><span>${done ? "All done ★" : `<span class="cost${short ? " short" : ""}">${cost} ${c.res}</span> → +${c.coins} coin${c.coins > 1 ? "s" : ""}`}</span></div>`;
+    cols.appendChild(b);
+  }
+  el.appendChild(cols);
+  const det = document.createElement("details"); det.className = "prog-wrap";
+  det.innerHTML = `<summary>Stars ${p.stars.length}/${S.target} · abilities</summary>`;
+  const prog = document.createElement("div"); prog.className = "prog";
+  for (const s of STARS) {
+    const row = document.createElement("div"); row.className = "row" + (p.stars.includes(s.key) ? " got" : "");
+    row.innerHTML = `<span>${p.stars.includes(s.key) ? "★" : "☆"} ${s.name}</span><span>${starProgress(p, s.key)}</span>`;
+    prog.appendChild(row);
+  }
+  det.appendChild(prog);
+  const ab = document.createElement("div"); ab.className = "ab";
+  ab.innerHTML = `<b>${f.ability}:</b> ${f.abilityText}<br>` +
+    (p.mechs ? MECH_POWERS.slice(0, p.mechs).map(m => `<b>${m.name}:</b> ${m.text}`).join("<br>") : "Build machines to unlock their powers.");
+  det.appendChild(ab);
+  if (detOpen) det.open = true;
+  det.addEventListener("toggle", () => { detOpen = det.open; });
+  el.appendChild(det);
+}
+let detOpen = false;
+function starProgress(p, k) {
+  return {
+    upgrades: `${p.ups.length}/6`, mechs: `${p.mechs}/4`, structures: `${p.structs.length}/4`, enlist: `${p.enlisted.length}/4`,
+    workers: `${workersOf(p).length}/8`, pop: `${p.pop}/18`, power: `${p.power}/16`, battle1: `${Math.min(1, p.battleStars)}/1`, battle2: `${p.battleStars}/2`
+  }[k];
+}
+function topText(p, k) {
+  if (k === "move") return `Move ${2 + upLv(p, "moveUnits")} units, or take ${1 + upLv(p, "moveCoins")} coin${upLv(p, "moveCoins") ? "s" : ""}`;
+  if (k === "produce") {
+    const w = workersOf(p).length;
+    return `Collect from ${2 + upLv(p, "produce")} tiles with workers${w >= 5 ? " (costs 1 power)" : ""}`;
+  }
+  if (k === "trade") return `Pay 1 coin: get ${2 + upLv(p, "tradeRes")} goods or ${1 + upLv(p, "tradePop")} popularity`;
+  return `Pay 1 coin: get ${2 + upLv(p, "bolster")} power or 1 battle card`;
+}
+function renderLog() {
+  const el = $("log");
+  el.replaceChildren();
+  for (const m of S.log.slice(-12)) { const d = document.createElement("div"); d.textContent = m; el.appendChild(d); }
+  el.scrollTop = el.scrollHeight;
+}
+function renderAll() { renderPlayers(); renderBoard(); }
+function toast(msg, big = false) {
+  if (TEST) return;
+  const t = document.createElement("div"); t.className = "toast paper" + (big ? " big" : ""); t.textContent = msg;
+  $("toasts").appendChild(t);
+  while ($("toasts").children.length > 3) $("toasts").firstChild.remove();
+  setTimeout(() => t.remove(), big ? 3600 : 2600);
+}
+
+// ---------- prompt & tile picking ----------
+let pending = null;
+function ask(text, buttons = [], tiles = null, color) {
+  return new Promise(resolve => {
+    pending = { resolve, tiles: tiles ? new Set(tiles.map(t => key(t.q, t.r))) : null };
+    $("promptText").textContent = text;
+    const bb = $("promptBtns"); bb.replaceChildren();
+    for (const b of buttons) {
+      const e = document.createElement("button"); e.type = "button"; e.className = "btn" + (b.plain ? " plain" : "");
+      e.textContent = b.label; e.disabled = !!b.disabled;
+      e.addEventListener("click", () => finish({ button: b.value }));
+      bb.appendChild(e);
+    }
+    $("prompt").hidden = false;
+    if (tiles) highlight(tiles, color); else clearHighlight();
+    $("board").classList.toggle("min", !!tiles);
+  });
+}
+function finish(v) {
+  if (!pending) return;
+  const r = pending.resolve; pending = null;
+  clearHighlight();
+  $("prompt").hidden = true;
+  r(v);
+}
+function status(text) { $("promptText").textContent = text; $("promptBtns").replaceChildren(); $("prompt").hidden = !text; }
+
+// ---------- modal ----------
+function modal(build) {
+  return new Promise(resolve => {
+    const box = $("modalBox"); box.replaceChildren();
+    const done = (v) => { $("modal").hidden = true; resolve(v); };
+    build(box, done);
+    $("modal").hidden = false;
+    const f = box.querySelector("button"); if (f) f.focus({ preventScroll: true });
+  });
+}
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function choiceList(box, items, done) {
+  const c = el("div", "choice");
+  for (const it of items) {
+    const b = el("button"); b.type = "button"; b.disabled = !!it.disabled;
+    b.append(el("b", null, it.name), el("span", null, it.text));
+    b.addEventListener("click", () => done(it.value));
+    c.appendChild(b);
+  }
+  box.appendChild(c);
+}
+
+// ---------- input ----------
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+function pick(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects([tileRoot, unitRoot, structRoot], true);
+  for (const h of hits) {
+    const u = h.object.userData.unit; if (u) return tileAt(u.q, u.r);
+    const t = h.object.userData.tile; if (t) return t;
+  }
+  return null;
+}
+let down = null;
+renderer.domElement.addEventListener("pointerdown", e => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+renderer.domElement.addEventListener("pointerup", e => {
+  if (!down) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), quick = performance.now() - down.t < 600; down = null;
+  if (moved > 8 || !quick) return;
+  const t = pick(e);
+  if (t && pending && pending.tiles && pending.tiles.has(key(t.q, t.r))) { sfx.click(); finish({ tile: t }); }
+  else if (t) showTip(e, t);
+});
+renderer.domElement.addEventListener("pointermove", e => { if (e.pointerType === "mouse" && S) { const t = pick(e); if (t) showTip(e, t); else $("tip").hidden = true; } });
+renderer.domElement.addEventListener("pointerleave", () => { $("tip").hidden = true; });
+function showTip(e, t) {
+  const tip = $("tip"), T = TERRAIN[t.type];
+  tip.replaceChildren();
+  tip.appendChild(el("b", null, t.type === "home" ? `${F(S.players[t.home]).short} Capital` : T.name));
+  const lines = [];
+  if (T.makes) lines.push(`Produces ${T.makes}`);
+  if (t.type === "forge") lines.push("Counts as 3 territories. First hero here gets a free upgrade.");
+  if (t.type === "lake") lines.push("Only Velska units or machines with Pontoons can cross.");
+  const us = unitsOn(t);
+  if (us.length) {
+    const p = S.players[us[0].p];
+    const c = { leader: 0, mech: 0, worker: 0 }; us.forEach(u => c[u.kind]++);
+    const parts = []; if (c.leader) parts.push("hero"); if (c.mech) parts.push(`${c.mech} machine${c.mech > 1 ? "s" : ""}`); if (c.worker) parts.push(`${c.worker} worker${c.worker > 1 ? "s" : ""}`);
+    lines.push(`${F(p).short}: ${parts.join(", ")}`);
+  }
+  const s = structOn(t); if (s) lines.push(`${F(S.players[s.p]).short} ${STRUCTURES.find(x => x.key === s.kind).name}`);
+  tip.appendChild(el("span", null, lines.join(". ")));
+  tip.style.left = Math.min(window.innerWidth - 230, e.clientX + 14) + "px";
+  tip.style.top = Math.max(10, e.clientY - 60) + "px";
+  tip.hidden = false;
+  clearTimeout(showTip.h); showTip.h = setTimeout(() => { tip.hidden = true; }, e.pointerType === "mouse" ? 4000 : 2500);
+}
+
+// =====================================================================
+// Turn engine
+// =====================================================================
+const humans = () => S.players.filter(p => p.ctrl === "human").length;
+let cpuDelay = TEST ? 0 : 650;
+async function pause(mult = 1) { if (cpuDelay) await sleep(cpuDelay * mult); }
+
+async function gameLoop() {
+  while (!S.over) {
+    const p = cur();
+    renderAll();
+    if (p.ctrl === "human" && humans() > 1) await curtain(p);
+    if (p.ctrl === "human") await humanTurn(p); else await cpuTurn(p);
+    checkStars(p);
+    if (S.over) break;
+    S.turn = (S.turn + 1) % S.players.length;
+    if (S.turn === 0) {
+      S.round++;
+      if (S.round > S.maxRounds) { S.over = true; S.endReason = `The ${S.maxRounds}-round limit was reached.`; break; }
+    }
+    save();
+  }
+  save();
+  renderAll();
+  await endGame();
+}
+async function curtain(p) {
+  status("");
+  await modal((box, done) => {
+    const f = F(p);
+    const h = el("h2", null, `${f.short}'s turn`); h.style.color = f.dark;
+    box.append(h, el("p", null, `Pass the device to ${p.label}. Everyone else, look away so your battle cards stay secret.`));
+    const b = el("button", "btn", `I'm ${p.label}, start my turn`); b.type = "button"; b.addEventListener("click", () => done());
+    box.appendChild(b);
+  });
+}
+
+// ---------- human turn ----------
+async function humanTurn(p) {
+  const colKey = await new Promise(resolve => {
+    pickColumns = (k) => { pickColumns = null; renderBoard(); resolve(k); };
+    $("board").classList.remove("min");
+    renderBoard();
+    status(`${F(p).short}: pick an action column on your board.`);
+  });
+  const col = COLUMNS.find(c => c.key === colKey);
+  p.lastCol = col.key;
+  sfx.click();
+  log(`${pname(p)} chose ${col.top}.`);
+  await doTop(p, col);
+  renderAll();
+  if (S.over) return;
+  checkStars(p); if (S.over) return;
+  if (!bottomDone(p, col.bottom)) {
+    const cost = costOf(p, col.bottom);
+    if (p.res[col.res] >= cost) {
+      const r = await ask(`Also ${col.bottomName} for ${cost} ${col.res}? (+${col.coins} coin${col.coins > 1 ? "s" : ""})`, [
+        { label: col.bottomName, value: "yes" }, { label: "Skip", value: "no", plain: true }]);
+      if (r.button === "yes") await doBottom(p, col);
+    }
+  }
+  renderAll();
+}
+async function doTop(p, col) {
+  const human = p.ctrl === "human";
+  if (col.key === "move") {
+    if (human) {
+      const coins = 1 + upLv(p, "moveCoins");
+      const r = await ask("Move your units or take coins?", [{ label: `Move ${2 + upLv(p, "moveUnits")} units`, value: "move" }, { label: `Take ${coins} coin${coins > 1 ? "s" : ""}`, value: "coins", plain: true }]);
+      if (r.button === "coins") { gain(p, "coins", coins); log(`${pname(p)} took ${coins} coin${coins > 1 ? "s" : ""}.`); return; }
+      await humanMove(p);
+    } else await cpuMove(p);
+    await resolveBattles(p);
+  } else if (col.key === "produce") {
+    await produce(p, human ? await humanProduceTiles(p) : cpuProduceTiles(p));
+  } else if (col.key === "trade") {
+    if (p.coins < 1) { if (human) await ask("You need 1 coin to trade.", [{ label: "OK", value: 1 }]); return; }
+    const choice = human ? await humanTrade(p) : cpuTrade(p);
+    if (!choice) return;
+    p.coins -= 1;
+    if (choice.pop) { gain(p, "pop", choice.pop); log(`${pname(p)} traded for ${choice.pop} popularity.`); }
+    else { for (const r in choice.goods) gain(p, r, choice.goods[r]); log(`${pname(p)} traded for ${Object.entries(choice.goods).filter(([, v]) => v).map(([r, v]) => `${v} ${r}`).join(", ")}.`); }
+  } else if (col.key === "bolster") {
+    if (p.coins < 1) { if (human) await ask("You need 1 coin to bolster.", [{ label: "OK", value: 1 }]); return; }
+    let what;
+    if (human) {
+      const n = 2 + upLv(p, "bolster") + (p.structs.includes("armory") ? 1 : 0);
+      const r = await ask("Bolster: pay 1 coin for…", [{ label: `${n} power`, value: "power", disabled: p.power >= 16 }, { label: "1 battle card", value: "card" }, { label: "Skip", value: "skip", plain: true }]);
+      what = r.button;
+    } else what = cpuBolster(p);
+    if (what === "skip" || !what) return;
+    p.coins -= 1;
+    if (what === "power") { const n = 2 + upLv(p, "bolster") + (p.structs.includes("armory") ? 1 : 0); gain(p, "power", n); log(`${pname(p)} gained ${n} power.`); }
+    else { p.cards.push(drawCard()); log(`${pname(p)} drew a battle card.`); }
+  }
+}
+async function doBottom(p, col) {
+  const cost = costOf(p, col.bottom);
+  const human = p.ctrl === "human";
+  if (col.bottom === "upgrade") {
+    const ch = human ? await humanUpgrade(p, false) : cpuUpgrade(p);
+    if (!ch) return;
+    p.res.oil -= cost; applyUpgrade(p, ch);
+  } else if (col.bottom === "deploy") {
+    const spots = [...new Set(workersOf(p).map(u => key(u.q, u.r)))].map(k => tileAt(...k.split(",").map(Number)));
+    if (!spots.length) return;
+    const t = human ? (await ask(`Build machine #${p.mechs + 1} (${MECH_POWERS[p.mechs].name}): pick a tile with your worker.`, [{ label: "Cancel", value: "x", plain: true }], spots)).tile : cpuDeploySpot(p, spots);
+    if (!t) return;
+    p.res.iron -= cost;
+    const m = MECH_POWERS[p.mechs];
+    p.mechs++; addUnit(p.i, "mech", t.q, t.r);
+    syncUnits();
+    log(`${pname(p)} built a war machine and unlocked ${m.name}.`);
+    toast(`${pname(p)} unlocked ${m.name}: ${m.text}`);
+    sfx.build();
+  } else if (col.bottom === "build") {
+    const left = STRUCTURES.filter(s => !p.structs.includes(s.key));
+    const spots = [...new Set(workersOf(p).map(u => key(u.q, u.r)))].map(k => tileAt(...k.split(",").map(Number))).filter(t => !structOn(t));
+    if (!spots.length || !left.length) { if (human) await ask("You need a worker on a tile without a structure.", [{ label: "OK", value: 1 }]); return; }
+    let kind, t;
+    if (human) {
+      kind = await modal((box, done) => {
+        box.append(el("h2", null, "Build a structure"), el("p", null, `Costs ${cost} wood. Then pick a tile with your worker.`));
+        choiceList(box, [...left.map(s => ({ name: s.name, text: s.text, value: s.key })), { name: "Cancel", text: "Don't build", value: null }], done);
+      });
+      if (!kind) return;
+      const r = await ask(`Place your ${STRUCTURES.find(s => s.key === kind).name}: pick a tile with your worker.`, [{ label: "Cancel", value: "x", plain: true }], spots);
+      t = r.tile; if (!t) return;
+    } else [kind, t] = cpuBuild(p, left, spots);
+    p.res.wood -= cost;
+    p.structs.push(kind); S.structures.push({ p: p.i, kind, q: t.q, r: t.r });
+    if (kind === "monument") gain(p, "pop", 2);
+    syncStructures();
+    log(`${pname(p)} built a ${STRUCTURES.find(s => s.key === kind).name}.`);
+    sfx.build();
+  } else if (col.bottom === "enlist") {
+    const left = ENLIST.filter(e => !p.enlisted.includes(e.key));
+    const k = human ? await modal((box, done) => {
+      box.append(el("h2", null, "Enlist"), el("p", null, `Pay ${cost} grain to recruit specialists.`));
+      choiceList(box, [...left.map(e => ({ name: e.name, text: e.text, value: e.key })), { name: "Cancel", text: "Don't enlist", value: null }], done);
+    }) : cpuEnlist(p, left);
+    if (!k) return;
+    p.res.grain -= cost;
+    p.enlisted.push(k);
+    if (k === "power") gain(p, "power", 3);
+    if (k === "coins") gain(p, "coins", 4);
+    if (k === "pop") gain(p, "pop", 2);
+    if (k === "cards") { p.cards.push(drawCard(), drawCard()); }
+    log(`${pname(p)} enlisted ${ENLIST.find(e => e.key === k).name}.`);
+  }
+  gain(p, "coins", col.coins);
+  checkStars(p);
+}
+function applyUpgrade(p, ch) {
+  if (ch.top) p.ups.push(ch.top);
+  if (ch.bottom) p.costs[ch.bottom] = Math.max(1, p.costs[ch.bottom] - 1);
+  log(`${pname(p)} upgraded: ${UPGRADES.find(u => u.key === ch.top).name}${ch.bottom ? `, ${COLUMNS.find(c => c.bottom === ch.bottom).bottomName} now costs less` : ""}.`);
+  sfx.build();
+}
+async function humanUpgrade(p, free) {
+  const tops = UPGRADES.filter(u => !p.ups.includes(u.key));
+  if (!tops.length) return null;
+  const top = await modal((box, done) => {
+    box.append(el("h2", null, free ? "Forge secret: free upgrade" : "Upgrade"), el("p", null, "Step 1: make one action stronger."));
+    choiceList(box, [...tops.map(u => ({ name: u.name, text: u.text, value: u.key })), ...(free ? [] : [{ name: "Cancel", text: "Don't upgrade", value: null }])], done);
+  });
+  if (!top) return null;
+  const bots = COLUMNS.filter(c => p.costs[c.bottom] > 1 && !bottomDone(p, c.bottom));
+  let bottom = null;
+  if (bots.length) bottom = await modal((box, done) => {
+    box.append(el("h2", null, "Upgrade"), el("p", null, "Step 2: make one bottom action cheaper."));
+    choiceList(box, bots.map(c => ({ name: c.bottomName, text: `${costOf(p, c.bottom)} → ${Math.max(1, costOf(p, c.bottom) - 1)} ${c.res}`, value: c.bottom })), done);
+  });
+  return { top, bottom };
+}
+async function humanTrade(p) {
+  const n = 2 + upLv(p, "tradeRes"), popN = 1 + upLv(p, "tradePop");
+  return modal((box, done) => {
+    box.append(el("h2", null, "Trade"), el("p", null, `Pay 1 coin. Choose ${n} goods, or take ${popN} popularity instead.`));
+    const goods = { grain: 0, wood: 0, iron: 0, oil: 0 };
+    const pk = el("div", "picker");
+    const left = el("p", "muted");
+    const go = el("button", "btn", "Trade for goods"); go.type = "button";
+    const refresh = () => { const used = Object.values(goods).reduce((a, b) => a + b, 0); left.textContent = `${n - used} left to pick`; go.disabled = used !== n; for (const r of RES) pk.querySelector(`[data-r=${r}] b`).textContent = goods[r]; };
+    for (const r of RES) {
+      const d = el("div"); d.dataset.r = r;
+      d.append(el("small", null, r), el("b", null, "0"));
+      const pm = el("div", "pm");
+      const minus = el("button", null, "−"), plus = el("button", null, "+"); minus.type = plus.type = "button";
+      minus.addEventListener("click", () => { if (goods[r] > 0) goods[r]--; refresh(); });
+      plus.addEventListener("click", () => { if (Object.values(goods).reduce((a, b) => a + b, 0) < n) goods[r]++; refresh(); });
+      pm.append(minus, plus); d.appendChild(pm); pk.appendChild(d);
+    }
+    box.append(pk, left);
+    const row = el("div", "row-btns");
+    go.addEventListener("click", () => done({ goods: { ...goods } }));
+    const pop = el("button", "btn plain", `Take ${popN} popularity`); pop.type = "button"; pop.disabled = p.pop >= 18; pop.addEventListener("click", () => done({ pop: popN }));
+    const cancel = el("button", "btn plain", "Skip"); cancel.type = "button"; cancel.addEventListener("click", () => done(null));
+    row.append(go, pop, cancel); box.appendChild(row);
+    refresh();
+  });
+}
+async function humanProduceTiles(p) {
+  const max = 2 + upLv(p, "produce");
+  const chosen = [];
+  while (chosen.length < max) {
+    const options = productiveTiles(p).filter(t => !chosen.includes(t));
+    if (!options.length) break;
+    const r = await ask(`Produce: pick up to ${max - chosen.length} more tile${max - chosen.length > 1 ? "s" : ""} with your workers.`,
+      [{ label: chosen.length ? "Produce now" : "Skip", value: "done", plain: !chosen.length }], options, "#7fe07a");
+    if (!r.tile) break;
+    chosen.push(r.tile);
+    highlight(chosen, "#ffd24a");
+  }
+  return chosen;
+}
+function productiveTiles(p) {
+  return S.tiles.filter(t => {
+    if (!TERRAIN[t.type].makes) return false;
+    const w = unitsOn(t).filter(u => u.p === p.i && u.kind === "worker").length;
+    const s = structOn(t);
+    return w > 0 || (s && s.kind === "mill" && s.p === p.i && unitsOn(t).every(u => u.p === p.i));
+  });
+}
+async function produce(p, tiles) {
+  if (!tiles || !tiles.length) return;
+  const w = workersOf(p).length;
+  if (w >= 5) { if (p.power < 1) { log(`${pname(p)} lacked the power to produce.`); return; } p.power -= 1; }
+  const got = {};
+  for (const t of tiles) {
+    let n = unitsOn(t).filter(u => u.p === p.i && u.kind === "worker").length;
+    const s = structOn(t); if (s && s.kind === "mill" && s.p === p.i) n += 1;
+    const m = TERRAIN[t.type].makes;
+    if (m === "workers") {
+      const room = 8 - workersOf(p).length, add = Math.min(room, n);
+      for (let i = 0; i < add; i++) addUnit(p.i, "worker", t.q, t.r);
+      if (add) got.workers = (got.workers || 0) + add;
+    } else { gain(p, m, n); got[m] = (got[m] || 0) + n; }
+  }
+  if (p.faction === "ostmark") { gain(p, "grain", 1); got.grain = (got.grain || 0) + 1; }
+  syncUnits();
+  const txt = Object.entries(got).map(([r, v]) => `${v} ${r}`).join(", ");
+  log(`${pname(p)} produced ${txt || "nothing"}.`);
+}
+
+// ---------- moving ----------
+async function humanMove(p) {
+  const max = 2 + upLv(p, "moveUnits");
+  const moved = new Set();
+  while (moved.size < max) {
+    const movable = S.units.filter(u => u.p === p.i && !moved.has(u.id) && reachable(p, u).length);
+    const tiles = [...new Map(movable.map(u => [key(u.q, u.r), tileAt(u.q, u.r)])).values()];
+    if (!tiles.length) break;
+    const r = await ask(`Move: pick a tile with a unit to move (${max - moved.size} left).`, [{ label: moved.size ? "Done moving" : "Skip", value: "done", plain: true }], tiles, "#ffd24a");
+    if (!r.tile) break;
+    const here = movable.filter(u => u.q === r.tile.q && u.r === r.tile.r);
+    let unit = here[0];
+    const kinds = [...new Set(here.map(u => u.kind))];
+    if (kinds.length > 1) {
+      const k = await modal((box, done) => {
+        box.append(el("h2", null, "Which unit?"));
+        const names = { leader: "Hero", mech: "War machine", worker: "Worker" };
+        choiceList(box, kinds.map(k => ({ name: names[k], text: k === "worker" ? "Moves 1 tile. Can't enter enemy tiles." : `Moves ${stepsFor(p, { kind: k })} tile${stepsFor(p, { kind: k }) > 1 ? "s" : ""}. Can start battles.`, value: k })), done);
+      });
+      unit = here.find(u => u.kind === k);
+    }
+    const dests = reachable(p, unit);
+    const d = await ask(`Move your ${unit.kind === "leader" ? "hero" : unit.kind === "mech" ? "war machine" : "worker"} where?`, [{ label: "Pick another unit", value: "back", plain: true }], dests, "#7fe07a");
+    if (!d.tile) continue;
+    moveUnit(p, unit, d.tile);
+    moved.add(unit.id);
+    renderAll();
+  }
+}
+function moveUnit(p, unit, t) {
+  unit.q = t.q; unit.r = t.r;
+  sfx.move();
+  if (unit.kind !== "worker") {
+    const enemies = enemyOn(p, t);
+    if (enemies.length && enemies.every(u => u.kind === "worker")) {
+      enemies.forEach(retreatHome);
+      gain(p, "pop", -enemies.length);
+      log(`${pname(p)} drove off ${enemies.length} ${F(S.players[enemies[0].p]).short} worker${enemies.length > 1 ? "s" : ""} (−${enemies.length} popularity).`);
+    }
+    if (unit.kind === "leader" && t.type === "forge" && !p.forge) { p.forge = true; p.forgePending = true; }
+  }
+  syncUnits();
+}
+async function resolveBattles(p) {
+  // Forge reward first
+  if (p.forgePending) {
+    p.forgePending = false;
+    log(`${pname(p)}'s hero reached the Great Forge!`);
+    toast(`${pname(p)}'s hero reached the Great Forge`, true);
+    if (p.ups.length < 6) {
+      const ch = p.ctrl === "human" ? await humanUpgrade(p, true) : cpuUpgrade(p);
+      if (ch) applyUpgrade(p, ch);
+    } else gain(p, "coins", 4);
+    checkStars(p);
+  }
+  const fights = S.tiles.filter(t => {
+    const us = unitsOn(t);
+    return us.some(u => u.p === p.i && u.kind !== "worker") && us.some(u => u.p !== p.i && u.kind !== "worker");
+  });
+  for (const t of fights) {
+    if (S.over) return;
+    const def = S.players[unitsOn(t).find(u => u.p !== p.i).p];
+    await battle(p, def, t);
+    checkStars(p); checkStars(def);
+  }
+}
+async function battle(att, def, t) {
+  sfx.battle();
+  log(`⚔ ${pname(att)} attacks ${pname(def)} at the ${TERRAIN[t.type].name}.`);
+  const units = (pl) => unitsOn(t).filter(u => u.p === pl.i);
+  const combatants = (pl) => units(pl).filter(u => u.kind !== "worker").length;
+  const maxCards = (pl) => Math.min(pl.cards.length, combatants(pl) + (hasPower(pl, "tactics") ? 1 : 0));
+  const choose = async (pl, foe) => {
+    if (pl.ctrl === "human") {
+      if (humans() > 1) await curtainBattle(pl, foe);
+      return humanBattle(pl, foe, t, maxCards(pl));
+    }
+    return cpuBattle(pl, foe, maxCards(pl));
+  };
+  const a = await choose(att, def);
+  const d = await choose(def, att);
+  const total = (pl, c) => c.dial + c.cards.reduce((s, v) => s + v, 0) + (hasPower(pl, "armor") ? 2 : 0);
+  const at = total(att, a), dt = total(def, d);
+  const win = at >= dt ? att : def, lose = win === att ? def : att;
+  const lc = win === att ? d : a;
+  for (const [pl, c] of [[att, a], [def, d]]) {
+    pl.power = Math.max(0, pl.power - c.dial);
+    for (const v of c.cards) { pl.cards.splice(pl.cards.indexOf(v), 1); S.discard.push(v); }
+  }
+  const loserWorkers = units(lose).filter(u => u.kind === "worker").length;
+  units(lose).forEach(retreatHome);
+  if (win.battleStars < 2) win.battleStars++;
+  if (lc.dial > 0) lose.cards.push(drawCard());
+  if (win === att && loserWorkers) gain(att, "pop", -loserWorkers);
+  syncUnits();
+  log(`⚔ ${pname(win)} wins ${win === att ? at : dt} to ${win === att ? dt : at}.`);
+  await modal((box, done) => {
+    box.append(el("h2", null, `${pname(win)} wins the battle`));
+    const vs = el("div", "vs");
+    const side = (pl, c, tot) => {
+      const d2 = el("div");
+      const b = el("div", "big", String(tot)); b.style.color = F(pl).dark;
+      d2.append(el("b", null, F(pl).short), b, el("div", "muted", `${c.dial} power${c.cards.length ? ` + cards ${c.cards.join(", ")}` : ""}${hasPower(pl, "armor") ? " + 2 armor" : ""}`));
+      return d2;
+    };
+    vs.append(side(att, a, at), el("div", "mid", "vs"), side(def, d, dt));
+    box.appendChild(vs);
+    box.appendChild(el("p", null, `${pname(lose)}'s units retreat to their capital.${win === att && loserWorkers ? ` ${pname(att)} loses ${loserWorkers} popularity for scaring off workers.` : ""}${lc.dial > 0 ? ` ${pname(lose)} draws a battle card.` : ""}`));
+    const ok = el("button", "btn", "Continue"); ok.type = "button"; ok.addEventListener("click", () => done());
+    box.appendChild(ok);
+    if (TEST) setTimeout(() => done(), 0);
+    else if (S.players.every(x => x.ctrl !== "human")) setTimeout(() => { if (!$("modal").hidden) ok.click(); }, 2500);
+  });
+}
+async function curtainBattle(pl, foe) {
+  await modal((box, done) => {
+    box.append(el("h2", null, `Battle! ${F(pl).short}, choose in secret`), el("p", null, `Pass the device to ${pl.label}. ${F(foe).short}'s player should look away.`));
+    const b = el("button", "btn", "Ready"); b.type = "button"; b.addEventListener("click", () => done()); box.appendChild(b);
+  });
+}
+function humanBattle(pl, foe, t, maxC) {
+  return modal((box, done) => {
+    const maxDial = Math.min(7, pl.power);
+    let dial = 0; const picked = [];
+    box.append(el("h2", null, "Battle!"),
+      el("p", null, `${F(pl).short} vs ${F(foe).short} at the ${TERRAIN[t.type].name}. Pick how much power to spend (up to 7) and up to ${maxC} battle card${maxC === 1 ? "" : "s"}. Higher total wins. Attackers win ties.`),
+      el("p", "muted", `${F(foe).short} has ${foe.power} power and ${foe.cards.length} cards.${hasPower(pl, "armor") ? " Your Armor Plate adds 2." : ""}${hasPower(foe, "armor") ? ` Their Armor Plate adds 2.` : ""}`));
+    box.appendChild(el("h3", null, "Power"));
+    const dl = el("div", "dial");
+    for (let i = 0; i <= 7; i++) {
+      const b = el("button", i === 0 ? "on" : "", String(i)); b.type = "button"; b.disabled = i > maxDial;
+      b.addEventListener("click", () => { dial = i; dl.querySelectorAll("button").forEach((x, j) => x.classList.toggle("on", j === i)); upd(); });
+      dl.appendChild(b);
+    }
+    box.appendChild(dl);
+    box.appendChild(el("h3", null, "Battle cards"));
+    const cp = el("div", "cardpick");
+    pl.cards.slice().sort((a, b) => b - a).forEach((v, idx) => {
+      const b = el("button", null, String(v)); b.type = "button";
+      b.addEventListener("click", () => {
+        const at = picked.indexOf(idx);
+        if (at >= 0) picked.splice(at, 1); else if (picked.length < maxC) picked.push(idx);
+        cp.querySelectorAll("button").forEach((x, j) => x.classList.toggle("on", picked.includes(j)));
+        upd();
+      });
+      cp.appendChild(b);
+    });
+    if (!pl.cards.length) cp.appendChild(el("span", "muted", "You have no battle cards."));
+    box.appendChild(cp);
+    const sumEl = el("p");
+    box.appendChild(sumEl);
+    const sorted = pl.cards.slice().sort((a, b) => b - a);
+    const upd = () => { sumEl.textContent = `Your total: ${dial + picked.reduce((s, i) => s + sorted[i], 0) + (hasPower(pl, "armor") ? 2 : 0)}`; };
+    upd();
+    const go = el("button", "btn rust", "Lock it in"); go.type = "button";
+    go.addEventListener("click", () => done({ dial, cards: picked.map(i => sorted[i]) }));
+    box.appendChild(go);
+  });
+}
+
+// =====================================================================
+// Computer players
+// =====================================================================
+function needs(p) {
+  const n = { grain: 0, wood: 0, iron: 0, oil: 0 };
+  for (const c of COLUMNS) if (!bottomDone(p, c.bottom)) n[c.res] = Math.max(0, costOf(p, c.bottom) - p.res[c.res]);
+  return n;
+}
+function resWeight(p, r) { const n = needs(p); return n[r] > 0 ? 2.2 : bottomDone(p, COLUMNS.find(c => c.res === r).bottom) ? 0.4 : 0.9; }
+function noise(p) { return { easy: 4, normal: 1, hard: 0.3 }[p.ctrl] * (Math.random() - 0.5) * 2; }
+function strength(pl, nCombat) {
+  const cards = pl.cards.slice().sort((a, b) => b - a).slice(0, nCombat + (hasPower(pl, "tactics") ? 1 : 0));
+  return Math.min(7, pl.power) + cards.reduce((s, v) => s + v, 0) + (hasPower(pl, "armor") ? 2 : 0);
+}
+function estimate(pl, nCombat) {
+  const n = Math.min(pl.cards.length, nCombat + (hasPower(pl, "tactics") ? 1 : 0));
+  return Math.min(7, pl.power) + n * 3 + (hasPower(pl, "armor") ? 2 : 0);
+}
+function tileValueFor(p, unit, t, occupiedByMe) {
+  // How good is it for this unit to stand on tile t?
+  let v = 0;
+  const T = TERRAIN[t.type];
+  const mine = occupiedByMe.get(key(t.q, t.r)) || 0;
+  const enemies = enemyOn(p, t);
+  if (t.type === "home") return -1;
+  if (unit.kind === "worker") {
+    if (T.makes === "workers") v += workersOf(p).length < 8 ? 2.4 : 0.2;
+    else if (T.makes) v += resWeight(p, T.makes) * 1.1;
+    if (mine === 0) v += 1.4;
+    if (t.type === "forge") v += 0.5;
+  } else {
+    if (mine === 0) v += 1.2;
+    if (t.type === "forge") v += unit.kind === "leader" && !p.forge ? 9 : 3.5;
+    const combEnemies = enemies.filter(u => u.kind !== "worker");
+    if (combEnemies.length) {
+      const foe = S.players[combEnemies[0].p];
+      const myN = 1 + unitsOn(t).filter(u => u.p === p.i && u.kind !== "worker").length;
+      const margin = { easy: 3, normal: 2, hard: 2 }[p.ctrl];
+      const can = strength(p, myN) >= estimate(foe, combEnemies.length) + margin;
+      const eager = { easy: 0.15, normal: 1, hard: 1.1 }[p.ctrl];
+      v += can ? (p.battleStars < 2 ? 7 : 3) * eager : -12;
+    } else if (enemies.length) {
+      v += { easy: -1, normal: 0.4, hard: 0 }[p.ctrl] - enemies.length * (p.pop <= 7 ? 2.4 : 0.9) - (lateGame() ? 1.5 : 0);
+    }
+    if (unit.kind === "leader" && !p.forge) v -= dist(t, { q: 0, r: 0 }) * 1.3;
+  }
+  return v;
+}
+function planMoves(p, maxUnits) {
+  const plan = [];
+  const occ = new Map();
+  for (const u of S.units) if (u.p === p.i) occ.set(key(u.q, u.r), (occ.get(key(u.q, u.r)) || 0) + 1);
+  const used = new Set();
+  for (let k = 0; k < maxUnits; k++) {
+    let best = null;
+    for (const u of S.units) {
+      if (u.p !== p.i || used.has(u.id)) continue;
+      const here = tileAt(u.q, u.r);
+      occ.set(key(u.q, u.r), occ.get(key(u.q, u.r)) - 1);
+      const stay = tileValueFor(p, u, here, occ) + (u.kind === "worker" && (occ.get(key(u.q, u.r)) || 0) === 0 && TERRAIN[here.type].makes ? 0.8 : 0);
+      for (const t of reachable(p, u)) {
+        const gainV = tileValueFor(p, u, t, occ) - stay + noise(p) * 0.3;
+        if (gainV > 0.3 && (!best || gainV > best.v)) best = { u, t, v: gainV };
+      }
+      occ.set(key(u.q, u.r), occ.get(key(u.q, u.r)) + 1);
+    }
+    if (!best) break;
+    used.add(best.u.id);
+    occ.set(key(best.u.q, best.u.r), occ.get(key(best.u.q, best.u.r)) - 1);
+    occ.set(key(best.t.q, best.t.r), (occ.get(key(best.t.q, best.t.r)) || 0) + 1);
+    plan.push(best);
+  }
+  return plan;
+}
+function cpuProduceTiles(p) {
+  const max = 2 + upLv(p, "produce");
+  return productiveTiles(p).map(t => {
+    let n = unitsOn(t).filter(u => u.p === p.i && u.kind === "worker").length;
+    const s = structOn(t); if (s && s.kind === "mill" && s.p === p.i) n++;
+    const m = TERRAIN[t.type].makes;
+    const v = m === "workers" ? (workersOf(p).length < 8 ? n * 2 : 0) : n * resWeight(p, m);
+    return { t, v };
+  }).filter(x => x.v > 0).sort((a, b) => b.v - a.v).slice(0, max).map(x => x.t);
+}
+function cpuScoreColumn(p, c) {
+  let v = 0;
+  if (c.key === "move") {
+    const plan = planMoves(p, 2 + upLv(p, "moveUnits"));
+    v = Math.max(plan.reduce((s, m) => s + m.v, 0), 1 + upLv(p, "moveCoins"));
+  } else if (c.key === "produce") {
+    const tiles = cpuProduceTiles(p);
+    v = tiles.reduce((s, t) => {
+      let n = unitsOn(t).filter(u => u.p === p.i && u.kind === "worker").length;
+      const m = TERRAIN[t.type].makes;
+      return s + (m === "workers" ? (workersOf(p).length < 8 ? n * 2 : 0) : n * resWeight(p, m));
+    }, 0);
+    if (workersOf(p).length >= 5) v -= 1;
+  } else if (c.key === "trade") {
+    if (p.coins >= 1) {
+      const n = needs(p); const need = Object.values(n).reduce((a, b) => a + b, 0);
+      v = need > 0 ? 3.2 : 0.8;
+      if (p.pop < 18 && wantsPop(p)) v = Math.max(v, lateGame() ? 5 : 3.6);
+    }
+  } else if (c.key === "bolster") {
+    if (p.coins >= 1) v = p.power < 5 ? 3.5 : p.power < 10 ? 1.8 : p.power < 16 ? 1 : 0.6;
+    if (p.cards.length < 1) v += 0.8;
+  }
+  if (canBottom(p, c)) v += 8;
+  if (p.ctrl === "hard" && c.key === "move" && lateGame()) v += 1.5;
+  if (p.ctrl === "hard" && c.bottom === "enlist" && canBottom(p, c) && p.enlisted.length === 3) v += 2;
+  else if (!bottomDone(p, c.bottom)) v += 0.4 * Math.max(0, 3 - (costOf(p, c.bottom) - p.res[c.res]));
+  return v + noise(p);
+}
+async function cpuTurn(p) {
+  status(`${F(p).short} (${p.label}) is thinking…`);
+  await pause(0.7);
+  const options = COLUMNS.filter(c => c.key !== p.lastCol).map(c => ({ c, v: cpuScoreColumn(p, c) })).sort((a, b) => b.v - a.v);
+  // Easy players sometimes pick a random column.
+  const col = p.ctrl === "easy" && Math.random() < 0.35 ? options[Math.floor(Math.random() * options.length)].c : options[0].c;
+  p.lastCol = col.key;
+  log(`${pname(p)} chose ${col.top}.`);
+  renderAll();
+  await doTop(p, col);
+  renderAll();
+  await pause(0.6);
+  if (S.over) return;
+  checkStars(p); if (S.over) return;
+  if (canBottom(p, col) && !(p.ctrl === "easy" && Math.random() < 0.3)) { await doBottom(p, col); renderAll(); await pause(0.6); }
+  status("");
+}
+async function cpuMove(p) {
+  const plan = planMoves(p, 2 + upLv(p, "moveUnits"));
+  if (!plan.length) { const n = 1 + upLv(p, "moveCoins"); gain(p, "coins", n); log(`${pname(p)} took ${n} coin${n > 1 ? "s" : ""}.`); return; }
+  for (const m of plan) {
+    if (!reachable(p, m.u).some(t => t === m.t)) continue;
+    moveUnit(p, m.u, m.t);
+    renderPlayers();
+    await pause(0.5);
+  }
+}
+function cpuTrade(p) {
+  const n = needs(p), count = 2 + upLv(p, "tradeRes");
+  const need = Object.values(n).reduce((a, b) => a + b, 0);
+  if (p.pop < 18 && (need === 0 || wantsPop(p))) return { pop: 1 + upLv(p, "tradePop") };
+  const goods = { grain: 0, wood: 0, iron: 0, oil: 0 };
+  for (let i = 0; i < count; i++) {
+    const r = RES.slice().sort((a, b) => (n[b] - goods[b]) - (n[a] - goods[a]))[0];
+    goods[r]++;
+  }
+  return { goods };
+}
+function lateGame() { return S.players.some(x => x.stars.length >= S.target - 2); }
+function wantsPop(p) {
+  // Popularity sets how much stars, land and goods are worth at the end.
+  if (p.pop < 4) return true;
+  const nextTier = p.pop < 7 ? 7 : p.pop < 13 ? 13 : 99;
+  return nextTier - p.pop <= (lateGame() ? 4 : 2);
+}
+function cpuBolster(p) { return p.power < 16 && (p.power < 9 || p.cards.length >= 3) ? "power" : "card"; }
+function cpuUpgrade(p) {
+  const order = ["produce", "moveUnits", "tradeRes", "bolster", "tradePop", "moveCoins"];
+  const top = order.find(k => !p.ups.includes(k));
+  if (!top) return null;
+  const n = needs(p);
+  const bots = COLUMNS.filter(c => p.costs[c.bottom] > 1 && !bottomDone(p, c.bottom)).sort((a, b) => n[b.res] - n[a.res]);
+  return { top, bottom: bots[0] ? bots[0].bottom : null };
+}
+function cpuDeploySpot(p, spots) { return spots.slice().sort((a, b) => dist(a, { q: 0, r: 0 }) - dist(b, { q: 0, r: 0 }))[0]; }
+function cpuBuild(p, left, spots) {
+  const kind = (wantsPop(p) ? ["monument", "mill", "armory", "tower"] : ["mill", "monument", "armory", "tower"]).find(k => left.some(s => s.key === k));
+  let t;
+  if (kind === "mill") t = spots.slice().sort((a, b) => unitsOn(b).length - unitsOn(a).length)[0];
+  else if (kind === "tower") t = spots.slice().sort((a, b) => dist(a, { q: 0, r: 0 }) - dist(b, { q: 0, r: 0 }))[0];
+  else t = spots[Math.floor(Math.random() * spots.length)];
+  return [kind, t];
+}
+function cpuEnlist(p, left) {
+  const pref = wantsPop(p) ? ["pop", "power", "coins", "cards"] : p.power < 6 ? ["power", "coins", "pop", "cards"] : ["coins", "pop", "power", "cards"];
+  return pref.find(k => left.some(e => e.key === k));
+}
+function cpuBattle(pl, foe, maxC) {
+  const cards = pl.cards.slice().sort((a, b) => b - a).slice(0, maxC);
+  const maxDial = Math.min(7, pl.power);
+  const armor = hasPower(pl, "armor") ? 2 : 0;
+  if (pl.ctrl === "easy") {
+    const dial = Math.floor(Math.random() * (maxDial + 1));
+    return { dial, cards: cards.slice(0, Math.floor(Math.random() * (cards.length + 1))) };
+  }
+  const foeN = unitsOnFoeCombat(foe);
+  const est = estimate(foe, foeN) * (pl.ctrl === "hard" ? 0.8 : 0.7) + 1;
+  const cardSum = cards.reduce((s, v) => s + v, 0);
+  const need = Math.ceil(est - cardSum - armor);
+  if (need <= maxDial) return { dial: clamp(need, 0, maxDial), cards };
+  return { dial: 0, cards: [] };
+}
+function unitsOnFoeCombat(foe) { return Math.max(1, Math.min(2, S.units.filter(u => u.p === foe.i && u.kind !== "worker").length)); }
+
+// =====================================================================
+// End of game
+// =====================================================================
+async function endGame() {
+  store.del(SAVE_KEY);
+  status("");
+  const rows = S.players.map(p => ({ p, s: scoreOf(p) })).sort((a, b) => b.s.total - a.s.total);
+  log(`Game over. ${pname(rows[0].p)} wins with ${rows[0].s.total} coins.`);
+  sfx.star();
+  if (TEST) { window.__result = rows.map(r => ({ f: r.p.faction, c: r.p.ctrl, ...r.s, n: r.p.stars.length, pop: r.p.pop, pw: r.p.power, w: workersOf(r.p).length, st: r.p.stars.join("|") })); window.__rounds = S.round; return; }
+  await modal((box, done) => {
+    const w = rows[0].p;
+    const h = el("h2", null, `${F(w).name} wins!`); h.style.color = F(w).dark;
+    box.append(h, el("p", null, `${S.endReason} Final scores are coins after counting stars, land and goods. Popularity makes each one worth more.`));
+    const wrap = el("div", "scorewrap");
+    const tb = el("table", "score");
+    tb.innerHTML = "<tr><th>Nation</th><th>Coins</th><th>Stars</th><th>Land</th><th>Goods</th><th>Total</th></tr>";
+    for (const { p, s } of rows) {
+      const tr = el("tr", p === w ? "win" : "");
+      tr.innerHTML = `<td><span class="sw" style="background:${F(p).color}"></span> ${F(p).short} <small class="muted">${p.label}</small></td><td>${s.coins}</td><td>${s.stars}</td><td>${s.land}</td><td>${s.goods}</td><td>${s.total}</td>`;
+      tb.appendChild(tr);
+    }
+    wrap.appendChild(tb); box.appendChild(wrap);
+    const row = el("div", "row-btns");
+    const again = el("button", "btn", "New game"); again.type = "button"; again.addEventListener("click", () => done());
+    const look = el("button", "btn plain", "Look at the board"); look.type = "button";
+    look.addEventListener("click", () => { $("modal").hidden = true; ask("Game over.", [{ label: "New game", value: 1 }]).then(() => done()); });
+    row.append(again, look); box.appendChild(row);
+  });
+  showSetup();
+}
+
+// =====================================================================
+// Save / setup / menus
+// =====================================================================
+function save() { if (S && !S.over && !TEST) store.set(SAVE_KEY, JSON.stringify(S)); }
+function loadSave() { const raw = store.get(SAVE_KEY); if (!raw) return null; try { const s = JSON.parse(raw); return s && s.v === 1 && !s.over ? s : null; } catch { return null; } }
+
+const seatsCfg = [
+  { on: true, ctrl: "human", faction: "brennholt" },
+  { on: true, ctrl: "normal", faction: "velska" },
+  { on: true, ctrl: "normal", faction: "kaskar" },
+  { on: false, ctrl: "normal", faction: "ostmark" }
+];
+let setupMode = "full";
+function renderSeats() {
+  const wrap = $("seats"); wrap.replaceChildren();
+  seatsCfg.forEach((s, i) => {
+    const row = el("div", "seat" + (s.on ? "" : " off"));
+    const lab = el("label");
+    const cb = el("input"); cb.type = "checkbox"; cb.checked = s.on; cb.id = `seat-on-${i}`;
+    cb.addEventListener("change", () => {
+      if (!cb.checked && seatsCfg.filter(x => x.on).length <= 2) { cb.checked = true; toast("You need at least 2 players."); return; }
+      s.on = cb.checked; renderSeats();
+    });
+    lab.append(cb, document.createTextNode(`Seat ${i + 1}`));
+    const ctrl = el("select"); ctrl.id = `seat-ctrl-${i}`; ctrl.disabled = !s.on;
+    for (const [v, n] of [["human", "Human"], ["easy", "CPU · Easy"], ["normal", "CPU · Normal"], ["hard", "CPU · Hard"]]) { const o = el("option", null, n); o.value = v; ctrl.appendChild(o); }
+    ctrl.value = s.ctrl; ctrl.addEventListener("change", () => { s.ctrl = ctrl.value; });
+    const fac = el("select"); fac.id = `seat-fac-${i}`; fac.disabled = !s.on;
+    for (const k of FACTION_KEYS) { const o = el("option", null, FACTIONS[k].name); o.value = k; fac.appendChild(o); }
+    fac.value = s.faction;
+    fac.addEventListener("change", () => {
+      const other = seatsCfg.find((x, j) => j !== i && x.faction === fac.value);
+      if (other) other.faction = s.faction;
+      s.faction = fac.value; renderSeats();
+    });
+    const f = FACTIONS[s.faction];
+    const desc = el("div", "fdesc");
+    desc.innerHTML = `<span class="sw" style="background:${f.color}"></span> <b>${f.ability}:</b> ${f.abilityText} Starts with ${f.power} power, ${f.pop} popularity, ${f.cards} battle card${f.cards > 1 ? "s" : ""}.`;
+    row.append(lab, ctrl, fac, desc);
+    wrap.appendChild(row);
+  });
+}
+$("modeSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  setupMode = b.dataset.mode;
+  $("modeSeg").querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+});
+function showSetup() {
+  $("setup").hidden = false;
+  for (const id of ["players", "topright", "board", "log", "prompt"]) $(id).hidden = true;
+  const sv = loadSave();
+  $("continueRow").hidden = !sv;
+  if (sv) $("continueInfo").textContent = `${MODES[sv.mode].label} game, round ${sv.round}, ${sv.players.map(p => FACTIONS[p.faction].short).join(" vs ")}`;
+  renderSeats();
+}
+function enterGame() {
+  $("setup").hidden = true;
+  for (const id of ["players", "topright", "board", "log"]) $(id).hidden = false;
+  buildBoard();
+  for (const m of unitMeshes.values()) unitRoot.remove(m);
+  unitMeshes.clear();
+  syncUnits(true); syncStructures();
+  resize(); setView(viewMode);
+  renderAll(); renderLog();
+  gameLoop();
+}
+$("startBtn").addEventListener("click", () => {
+  const seats = seatsCfg.filter(s => s.on).map(s => ({ ctrl: s.ctrl, faction: s.faction }));
+  newGame(setupMode, seats);
+  S.log = [];
+  log(`A ${MODES[setupMode].label.toLowerCase()} game begins. First to ${S.target} stars ends it.`);
+  save();
+  enterGame();
+});
+$("continueBtn").addEventListener("click", () => { S = loadSave(); if (S) enterGame(); });
+$("rulesBtn").addEventListener("click", () => showRules());
+$("menuBtn").addEventListener("click", async () => {
+  if ($("modal").hidden === false) return;
+  const v = await modal((box, done) => {
+    box.appendChild(el("h2", null, "Menu"));
+    choiceList(box, [
+      { name: "How to play", text: "Rules, actions, battles and scoring.", value: "rules" },
+      { name: `Sound: ${soundOn ? "on" : "off"}`, text: "Turn sound effects on or off.", value: "sound" },
+      { name: `Computer speed: ${cpuDelay > 400 ? "normal" : "fast"}`, text: "How quickly computer players take their turns.", value: "speed" },
+      { name: "Quit to title", text: "Your game is saved. Continue it from the title screen.", value: "quit" },
+      { name: "Back to the game", text: "", value: null }
+    ], done);
+  });
+  if (v === "rules") showRules();
+  if (v === "sound") { soundOn = !soundOn; store.set("ia-sound", soundOn ? "1" : "0"); }
+  if (v === "speed") cpuDelay = cpuDelay > 400 ? 220 : 650;
+  if (v === "quit") { save(); location.reload(); }
+});
+function showRules() {
+  return modal((box, done) => {
+    box.innerHTML = `
+      <h2>How to play</h2>
+      <p>The war is over. Four nations race to rebuild and claim the valley around the Great Forge. The game ends the moment someone earns their last star (6 in a full game, 4 in a quick one). Then the richest nation wins.</p>
+      <h3>Your turn</h3>
+      <p>Pick one of the 4 columns on your board, but not the one you used last turn. Do its top action, then its bottom action if you can pay for it.</p>
+      <ul>
+        <li><b>Move</b>: move 2 units 1 tile each, or take a coin. <i>Bottom: Upgrade</i> (oil) makes an action stronger and a bottom action cheaper.</li>
+        <li><b>Produce</b>: workers on 2 tiles each make 1 of that tile's goods. Workers in villages recruit new workers. <i>Bottom: Build Machine</i> (iron) adds a war machine and unlocks a power.</li>
+        <li><b>Trade</b>: pay 1 coin for 2 goods of your choice or 1 popularity. <i>Bottom: Build Structure</i> (wood).</li>
+        <li><b>Bolster</b>: pay 1 coin for 2 power or a battle card. <i>Bottom: Enlist</i> (grain) for a one-time bonus.</li>
+      </ul>
+      <h3>Units</h3>
+      <ul>
+        <li><b>Workers</b> gather goods. They move 1 tile and can't enter enemy tiles.</li>
+        <li><b>Your hero and war machines</b> fight. Moving them onto an enemy hero or machine starts a battle. Moving onto lone enemy workers sends them home, but costs you 1 popularity each.</li>
+        <li>Lakes block movement unless a power says otherwise. The first time your hero reaches the Great Forge, you get a free upgrade.</li>
+      </ul>
+      <h3>Battles</h3>
+      <p>Both sides secretly choose 0–7 power to spend and up to one battle card per fighting unit. Highest total wins and attackers win ties. The loser's units retreat to their capital. Winning gives a star (2 at most).</p>
+      <h3>Stars</h3>
+      <p>All 6 upgrades, all 4 machines, all 4 structures, all 4 enlisted, 8 workers, 18 popularity, 16 power, and up to 2 battle wins.</p>
+      <h3>Final score</h3>
+      <p>Coins + stars + territories + every 2 goods. Your popularity sets what each is worth: low (0–6) 3/2/1, medium (7–12) 4/3/2, high (13–18) 5/4/3. The Forge counts as 3 territories.</p>`;
+    const b = el("button", "btn", "Got it"); b.type = "button"; b.addEventListener("click", () => done()); box.appendChild(b);
+  });
+}
+
+// =====================================================================
+// Main loop
+// =====================================================================
+const clock = new THREE.Clock();
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, clock.getDelta()), now = performance.now() / 1000;
+  for (const m of unitMeshes.values()) {
+    const t = m.userData.target; if (!t) continue;
+    const d = m.position.distanceTo(t);
+    if (d > 0.001) {
+      const k = Math.min(1, dt * 6);
+      const prev = m.position.clone();
+      m.position.lerp(t, k);
+      const dx = m.position.x - prev.x, dz = m.position.z - prev.z;
+      if (Math.abs(dx) + Math.abs(dz) > 0.002) m.rotation.y = Math.atan2(dx, dz);
+      m.position.y = t.y + (d > 0.05 ? Math.abs(Math.sin(now * 14)) * 0.05 : 0);
+    }
+  }
+  for (const s of smokes) {
+    const k = (now * 0.25 + s.userData.off) % 1;
+    s.position.set(s.userData.base.x + Math.sin(k * 6) * 0.1, s.userData.base.y + k * 1.4, s.userData.base.z);
+    s.scale.setScalar(0.6 + k * 1.4);
+    s.material.opacity = 0.7 * (1 - k);
+  }
+  sea.position.y = 0.18 + Math.sin(now * 0.8) * 0.01;
+  controls.update();
+  renderer.render(scene, camera);
+}
+$("loading").remove();
+resize();
+camera.position.set(0, 14, 14);
+frame();
+if (TEST) {
+  // Self-play check: four computer players, no delays.
+  const seats = window.__seats || [{ ctrl: "hard", faction: "brennholt" }, { ctrl: "normal", faction: "velska" }, { ctrl: "easy", faction: "kaskar" }, { ctrl: "normal", faction: "ostmark" }];
+  newGame(window.__mode || "full", seats); S.log = [];
+  enterGame();
+} else showSetup();
+</script>
+
+</body>
+</html>
