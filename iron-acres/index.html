@@ -94,6 +94,20 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--brass); ou
 .col.pick { cursor: pointer; box-shadow: 0 0 0 3px var(--brass); }
 .col.pick:hover { background: #fff8e8; transform: translateY(-2px); }
 .col.used { opacity: .5; }
+.col.locked { opacity: .4; }
+.coach { position: fixed; left: calc(50% - var(--panel-w) / 2 - 70px); transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--prompt-h, 50px) + 24px); width: min(440px, calc(100% - var(--panel-w) - 240px)); padding: 12px 14px; z-index: 5; display: grid; gap: 6px; border: 2px solid var(--gold, #c9a13b); }
+.coach .ch { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.coach h3 { margin: 0; font-size: 17px; }
+.coach .stp { font-size: 12px; opacity: .7; white-space: nowrap; }
+.coach p { margin: 0; font-size: 14px; line-height: 1.4; }
+.coach .cb { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.coach .cb .btn { padding: 4px 12px; font-size: 14px; }
+.coach.mini { width: auto; padding: 6px 10px; }
+.coach.mini p, .coach.mini .cb .fin, .coach.mini .stp { display: none; }
+[data-layout^="phone"] .coach { transform: none; width: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 56px); top: calc(var(--top-h, 56px) + 8px); bottom: auto; padding: 8px 10px; }
+[data-layout="phone-l"] .coach { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 300px); left: calc(max(10px, env(safe-area-inset-left, 0px)) + 60px); }
+[data-layout^="phone"] .coach p { font-size: 13px; }
+[data-layout^="phone"] .coach.mini { right: auto; }
 .col.forge { grid-column: 1 / -1; background: #f3e4cf; }
 .col .t { padding: 5px 7px 4px; }
 .col .t b, .col .b b { display: block; font-family: var(--font-cond); font-weight: 700; font-size: 16px; letter-spacing: .02em; line-height: 1.1; }
@@ -282,6 +296,7 @@ body { touch-action: manipulation; }
   <button type="button" class="wide" id="camView">Top-down</button>
   <button type="button" class="wide" id="camTracks">Tracks</button>
 </div>
+<div class="coach paper" id="coach" hidden></div>
 <div class="prompt paper" id="prompt" hidden><span class="txt" id="promptText"></span><span class="btns" id="promptBtns"></span></div>
 <div class="log paper" id="log" hidden></div>
 <div class="toasts" id="toasts"></div>
@@ -311,6 +326,7 @@ body { touch-action: manipulation; }
     <div class="seg" id="slotSeg"></div>
     <div class="row-btns">
       <button class="btn" id="startBtn" type="button">Start game</button>
+      <button class="btn plain" id="tutBtn" type="button">Tutorial game</button>
       <button class="btn plain" id="rulesBtn" type="button">How to play</button>
     </div>
   </div>
@@ -2066,7 +2082,9 @@ function renderBoard() {
     const b = document.createElement("button"); b.type = "button"; b.className = "col";
     const used = p.lastCol === c.key;
     if (used) b.classList.add("used");
-    if (pickColumns && !used) { b.classList.add("pick"); b.addEventListener("click", () => pickColumns(c.key)); } else b.disabled = !pickColumns;
+    const lock = !tutAllows(p, c.key);
+    if (lock) b.classList.add("locked");
+    if (pickColumns && !used && !lock) { b.classList.add("pick"); b.addEventListener("click", () => pickColumns(c.key)); } else b.disabled = !pickColumns || lock;
     const done = bottomDone(p, c.bottom), cost = costOf(p, c.bottom), short = avail(p, c.res) < cost;
     const rec = p.recruits[c.bottom] ? `<span class="rec"> · recruit ${ONGOING[c.bottom].name}</span>` : "";
     b.innerHTML = `<div class="t"><b>${c.top}</b><span>${topText(p, c.key)}</span></div>${used ? '<div class="tag">Used last turn</div>' : "<div></div>"}
@@ -2078,7 +2096,8 @@ function renderBoard() {
     const b = document.createElement("button"); b.type = "button"; b.className = "col forge";
     const used = p.lastCol === "forge";
     if (used) b.classList.add("used");
-    if (pickColumns && !used) { b.classList.add("pick"); b.addEventListener("click", () => pickColumns("forge")); } else b.disabled = !pickColumns;
+    const lock = !tutAllows(p, "forge");
+    if (pickColumns && !used && !lock) { b.classList.add("pick"); b.addEventListener("click", () => pickColumns("forge")); } else b.disabled = !pickColumns || lock;
     b.innerHTML = `<div class="t"><b>Forge plan: ${pl.name}</b><span>${pl.text}</span></div>${used ? '<div class="tag">Used last turn</div>' : "<div></div>"}`;
     cols.appendChild(b);
   }
@@ -2382,7 +2401,7 @@ async function gameLoop() {
     const p = cur();
     renderAll();
     if (p.ctrl === "human" && humans() > 1) await curtain(p);
-    if (p.ctrl === "human") await humanTurn(p); else await cpuTurn(p);
+    if (p.ctrl === "human") { coachEv(p, "myturn"); await humanTurn(p); coachEv(p, "done"); } else await cpuTurn(p);
     checkObjectives(p);
     checkStars(p);
     if (S.over) break;
@@ -2418,6 +2437,7 @@ async function humanTurn(p) {
       status(`${F(p).short}: pick an action on your board.`);
     });
     sfx.click();
+    coachEv(p, "pick:" + colKey);
     const prevLast = p.lastCol, logLen = S.log.length;
     try {
       if (colKey === "forge") { p.lastCol = "forge"; log(`${pname(p)} used their Forge plan.`); await doPlan(p); renderAll(); return; }
@@ -3220,6 +3240,7 @@ function awardsList() {
 }
 async function endGame() {
   store.del(slotKey(S.slot || 1));
+  S.tut = null; $("coach").hidden = true;
   status("");
   const rows = S.players.map(p => ({ p, s: scoreOf(p) })).sort((a, b) => b.s.total - a.s.total);
   log(`Game over. ${pname(rows[0].p)} wins with ${rows[0].s.total} coins.`);
@@ -3320,6 +3341,61 @@ function renderSlots() {
   });
 }
 new ResizeObserver(() => document.documentElement.style.setProperty("--board-h", $("board").offsetHeight + "px")).observe($("board"));
+new ResizeObserver(() => document.documentElement.style.setProperty("--prompt-h", $("prompt").offsetHeight + "px")).observe($("prompt"));
+// ---------- tutorial ----------
+// A guided quick game. S.tut is the current step; each step can limit which actions may be picked
+// and waits for an event ("pick:move", "done" = your turn ended, "myturn" = your turn began) or a button.
+const TUT = [
+  { title: "Welcome to Iron Acres", text: "You lead Brennholt, the red nation. Velska (blue) is a computer player on Easy. Earn stars, coins and land to win. This guide walks you through each action once.", next: "Let's go" },
+  { title: "Pick an action", text: "Your board has four actions. Each has a top half and a bottom half: you do the top, then you may also do the bottom if you can pay for it. Tap Move.", cols: ["move"], on: "pick:move" },
+  { title: "Move your units", text: "Choose to move, then drag a worker or your hero onto a green tile next to it. You can also tap a unit, then tap a tile. Undo takes back a step. Press Done moving when you're finished.", cols: ["move"], on: "done" },
+  { title: "Velska's turn", text: "Now the computer plays. Arrows show where its units go. Drag the empty map to turn the camera, and scroll or pinch to zoom.", on: "myturn" },
+  { title: "Produce goods", text: "You can't repeat last turn's action. Pick Produce: workers make goods on the tile they stand on. Farms give grain, forests wood, mountains iron, tundra oil, and villages make new workers.", cols: ["produce"], on: "done" },
+  { title: "Get stronger", text: "Next turn, pick Bolster. Power helps you win battles, and battle cards add to your power when you fight. Moving onto an enemy unit starts a battle.", cols: ["bolster"], on: "done" },
+  { title: "Trade", text: "Next turn, pick Trade: pay 1 coin for any 2 goods, or for popularity. Popularity raises what each star, territory and good is worth at the end.", cols: ["trade"], on: "done" },
+  { title: "Bottom actions", text: "When you have the goods shown on a bottom half, you'll be asked if you also want to do it: Upgrade, Build Machine, Build Structure or Enlist. They pay coins and lead to stars. Pick any action you like.", on: "done" },
+  { title: "You're ready!", text: "Stars come from finishing all upgrades, machines, structures or recruits, 8 workers, an objective, battle wins, 16 power and 18 popularity. The game ends when someone reaches the star goal. Tap Tracks to see power, popularity and stars on the board. Good luck!", next: "Finish" }
+];
+let coachMini = false;
+function tutStep(p) { return S && S.tut != null && p && p.ctrl === "human" ? TUT[S.tut] : null; }
+function tutAllows(p, key) { const st = tutStep(p); return !st || !st.cols || st.cols.includes(key); }
+function coachEv(p, ev) {
+  const st = tutStep(p);
+  if (st && st.on === ev) { S.tut++; if (S.tut >= TUT.length) S.tut = null; coachMini = false; renderCoach(); renderBoard(); }
+}
+function renderCoach() {
+  const c = $("coach");
+  const st = S && S.tut != null ? TUT[S.tut] : null;
+  c.hidden = !st || $("players").hidden;
+  if (c.hidden) return;
+  c.classList.toggle("mini", coachMini);
+  c.replaceChildren();
+  const h = el("div", "ch"); h.append(el("h3", null, coachMini ? "Tutorial" : st.title), el("span", "stp", `Step ${S.tut + 1} of ${TUT.length}`));
+  c.appendChild(h);
+  c.appendChild(el("p", null, st.text));
+  const row = el("div", "cb");
+  if (st.next && !coachMini) {
+    const b = el("button", "btn fin", st.next); b.type = "button";
+    b.addEventListener("click", () => { S.tut++; if (S.tut >= TUT.length) S.tut = null; save(); renderCoach(); renderBoard(); });
+    row.appendChild(b);
+  }
+  const mn = el("button", "btn plain", coachMini ? "Show" : "Hide"); mn.type = "button";
+  mn.addEventListener("click", () => { coachMini = !coachMini; renderCoach(); });
+  row.appendChild(mn);
+  if (!coachMini) {
+    const end = el("button", "btn plain fin", "End tutorial"); end.type = "button";
+    end.addEventListener("click", () => { S.tut = null; save(); renderCoach(); renderBoard(); });
+    row.appendChild(end);
+  }
+  c.appendChild(row);
+}
+$("tutBtn").addEventListener("click", () => {
+  newGame("quick", [{ ctrl: "human", faction: "brennholt", board: "industrial" }, { ctrl: "easy", faction: "velska" }], "classic");
+  S.slot = setupSlot; S.tut = 0; renderSlots.touched = false;
+  log(`A tutorial game begins. First to ${S.target} stars ends it.`);
+  save();
+  enterGame();
+});
 function enterGame() {
   $("setup").hidden = true;
   startMusic();
@@ -3331,7 +3407,7 @@ function enterGame() {
   syncUnits(true); syncStructures(); syncGoods(); syncTracks(true);
   resize(); frameMap(false);
   if (camGoal) { controls.target.copy(camGoal.target); camera.position.copy(camGoal.pos); camGoal = null; }
-  renderAll(); renderLog();
+  renderAll(); renderLog(); renderCoach();
   gameLoop();
 }
 $("startBtn").addEventListener("click", () => {
