@@ -140,6 +140,11 @@ details summary { cursor: pointer; font-family: var(--font-cond); font-weight: 7
 .seg button { border: 0; padding: 6px 14px; background: var(--paper-2); cursor: pointer; font-family: var(--font-cond); font-weight: 700; font-size: 16px; }
 .seg button.on { background: var(--ink); color: var(--paper); }
 .seats { display: grid; gap: 6px; }
+.slots { display: grid; gap: 6px; }
+.slots h3 { margin: 0; }
+.slotrow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--paper-2); padding: 6px 8px; border-radius: 5px; }
+.slotrow span { flex: 1; min-width: 170px; font-size: 14px; line-height: 1.3; }
+.slotrow b { font-family: var(--font-cond); font-size: 16px; }
 .seat { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 8px; background: var(--paper-2); border-radius: 5px; }
 .seat label { font-family: var(--font-cond); font-weight: 700; font-size: 16px; display: flex; gap: 6px; align-items: center; }
 .seat select { font: inherit; font-size: 15px; padding: 4px 6px; border: 1.5px solid var(--edge); border-radius: 4px; background: #fbf6ea; min-width: 0; width: 100%; }
@@ -267,10 +272,7 @@ body { touch-action: manipulation; }
       <p class="title-big">Iron Acres</p>
       <p class="subtitle">Claim the valley. Build the machines. Hold the Forge.</p>
     </div>
-    <div class="row-btns" id="continueRow" hidden>
-      <button class="btn" id="continueBtn" type="button">Continue saved game</button>
-      <span class="muted" id="continueInfo"></span>
-    </div>
+    <div class="slots" id="slots" hidden></div>
     <h3>Game length</h3>
     <div class="seg" id="modeSeg">
       <button type="button" data-mode="quick">Quick · about 15 min</button>
@@ -278,6 +280,8 @@ body { touch-action: manipulation; }
     </div>
     <h3>Players</h3>
     <div class="seats" id="seats"></div>
+    <h3>Save slot</h3>
+    <div class="seg" id="slotSeg"></div>
     <div class="row-btns">
       <button class="btn" id="startBtn" type="button">Start game</button>
       <button class="btn plain" id="rulesBtn" type="button">How to play</button>
@@ -861,6 +865,27 @@ function resize() {
   if (changed && S && !$("players").hidden) { renderAll(); frameMap(!!frameMap.top); }
 }
 window.addEventListener("resize", resize);
+
+// ---------- graphics quality ----------
+let gfx = store.get("ia-gfx") || "high";
+let gfxChosen = !!store.get("ia-gfx");
+function applyGraphics() {
+  const low = gfx === "low";
+  renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio || 1, 1.75));
+  renderer.shadowMap.enabled = !low;
+  sun.castShadow = !low;
+  scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); });
+  resize();
+}
+const fpsWatch = { t: 0, frames: 0, done: false };
+function watchFps(dt) {
+  // If the first few seconds of play are choppy, switch to low graphics once (players can switch back in the menu).
+  if (fpsWatch.done || gfxChosen || TEST || !S || $("players").hidden) return;
+  fpsWatch.t += dt; fpsWatch.frames++;
+  if (fpsWatch.t < 6) return;
+  fpsWatch.done = true;
+  if (fpsWatch.frames / fpsWatch.t < 28 && gfx === "high") { gfx = "low"; applyGraphics(); toast("Switched to low graphics for smoother play. Change it in the menu."); }
+}
 
 // ---------- terrain height field ----------
 let noise2 = createNoise2D(Math.random);
@@ -1591,6 +1616,43 @@ function syncStructures() {
   }
 }
 
+// ---------- effects: arrows for moves, pings for actions ----------
+const fxRoot = new THREE.Group(); scene.add(fxRoot);
+const fxList = [];
+function arrowFx(from, to, color) {
+  const a = toWorld(from.q, from.r), b = toWorld(to.q, to.r);
+  const y0 = standY(from) + 0.3, y1 = standY(to) + 0.3;
+  const len = Math.hypot(b.x - a.x, b.z - a.z);
+  const mid = new THREE.Vector3((a.x + b.x) / 2, Math.max(y0, y1) + 0.8 + len * 0.12, (a.z + b.z) / 2);
+  const curve = new THREE.QuadraticBezierCurve3(new THREE.Vector3(a.x, y0, a.z), mid, new THREE.Vector3(b.x, y1, b.z));
+  const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false });
+  const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.05, 6), m);
+  const head = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.34, 8), m);
+  const dir = curve.getTangent(1).normalize();
+  head.position.copy(curve.getPoint(1)).addScaledVector(dir, -0.12);
+  head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+  const g = new THREE.Group(); g.add(tube, head); g.renderOrder = 6; fxRoot.add(g);
+  fxList.push({ obj: g, mat: m, life: 5, max: 5, kind: "arrow" });
+}
+function pingFx(t, color) {
+  if (!t || TEST) return;
+  const { x, z } = toWorld(t.q, t.r);
+  const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide });
+  const ring = new THREE.Mesh(geo("pingRing", () => new THREE.RingGeometry(0.75, 0.95, 6).rotateX(-Math.PI / 2).rotateY(Math.PI / 6)), m);
+  ring.position.set(x, standY(t) + 0.1, z); fxRoot.add(ring);
+  fxList.push({ obj: ring, mat: m, life: 2.4, max: 2.4, kind: "ping" });
+}
+function updateFx(dt) {
+  for (let i = fxList.length - 1; i >= 0; i--) {
+    const f = fxList[i];
+    f.life -= dt;
+    const k = 1 - f.life / f.max;
+    if (f.kind === "ping") { f.obj.scale.setScalar(0.5 + (k * 1.2) % 1.2); f.mat.opacity = 0.9 * (1 - k); }
+    else f.mat.opacity = 0.9 * Math.min(1, f.life / 1.2);
+    if (f.life <= 0) { fxRoot.remove(f.obj); f.obj.traverse(o => { if (o.geometry && !o.geometry.parameters?.thetaSegments) o.geometry.dispose?.(); }); fxList.splice(i, 1); }
+  }
+}
+
 // ---------- highlights ----------
 const lit = new Map();
 function highlight(tiles, color = "#ffd24a") {
@@ -2004,24 +2066,33 @@ renderer.domElement.addEventListener("pointerup", e => {
 });
 renderer.domElement.addEventListener("pointerleave", () => { $("tip").hidden = true; setHover(null); if (!selected) outlineTile(null); });
 renderer.domElement.addEventListener("dblclick", e => { const t = tileUnder(e); if (t) focusTile(t); });
-function setHover(u) {
-  if (hovered === u) return;
-  if (hovered && hovered !== selected) { const m = unitMeshes.get(hovered.id); if (m) m.userData.halo.visible = false; }
-  hovered = u;
-  if (u && u !== selected) { const m = unitMeshes.get(u.id); if (m) { m.userData.halo.visible = true; m.userData.halo.material.color.set(moveUI && moveUI.canMove(u) ? "#a8ff9a" : "#fff2a8"); } }
+function setHover(u) { hovered = u; }
+function updateHalos(now) {
+  // One place decides each ring: picked up, hovered, or "you can move me" (a soft pulse).
+  for (const m of unitMeshes.values()) {
+    const u = m.userData.unit, h = m.userData.halo;
+    if (!h) continue;
+    const movable = moveUI && !moveUI.busy && moveUI.movable && moveUI.movable.has(u.id);
+    let col = null, op = 0.9;
+    if (u === selected) col = "#a8ff9a";
+    else if (u === hovered) col = movable ? "#a8ff9a" : "#fff2a8";
+    else if (movable) { col = "#a8ff9a"; op = 0.3 + 0.45 * (0.5 + 0.5 * Math.sin(now * 4)); }
+    h.visible = !!col;
+    if (col) { h.material.color.set(col); h.material.opacity = op; }
+  }
 }
 function selectUnit(u, dests) {
-  if (selected && selected !== u) { const m = unitMeshes.get(selected.id); if (m) { m.userData.halo.visible = false; m.userData.lift = 0; } }
+  if (selected && selected !== u) { const m = unitMeshes.get(selected.id); if (m) m.userData.lift = 0; }
   selected = u;
   const m = unitMeshes.get(u.id);
-  if (m) { m.userData.halo.visible = true; m.userData.halo.material.color.set("#a8ff9a"); m.userData.lift = 0.35; }
+  if (m) m.userData.lift = 0.35;
   highlight(dests, "#7fe07a");
   if (moveUI) moveUI.onSelect();
 }
 function cancelSelection() {
   if (!selected) return;
   const m = unitMeshes.get(selected.id);
-  if (m) { m.userData.halo.visible = false; m.userData.lift = 0; }
+  if (m) m.userData.lift = 0;
   selected = null;
   outlineTile(null);
   if (moveUI) { highlight(moveUI.sources(), "#ffd24a"); moveUI.onSelect(); }
@@ -2183,7 +2254,7 @@ async function doBottom(p, col) {
     if (!t) return;
     pay();
     p.mechs++; addUnit(p.i, "mech", t.q, t.r);
-    syncUnits();
+    syncUnits(); pingFx(t, F(p).color);
     log(`${pname(p)} built a war machine and unlocked ${m.name}.`);
     toast(`${pname(p)} unlocked ${m.name}: ${m.text}`);
     sfx.build();
@@ -2204,7 +2275,7 @@ async function doBottom(p, col) {
     pay();
     p.structs.push(kind); S.structures.push({ p: p.i, kind, q: t.q, r: t.r });
     if (kind === "monument") gain(p, "pop", 2);
-    syncStructures();
+    syncStructures(); pingFx(t, F(p).color);
     log(`${pname(p)} built a ${STRUCTURES.find(s => s.key === kind).name}.`);
     sfx.build();
   } else if (col.bottom === "enlist") {
@@ -2323,6 +2394,7 @@ async function produce(p, tiles) {
   }
   if (p.faction === "ostmark") { const t = tiles.find(x => x.type === "field"); if (t) { addGoods(t, "grain", 1); got.grain = (got.grain || 0) + 1; } }
   syncUnits(); syncGoods();
+  if (p.ctrl !== "human") for (const t of tiles) pingFx(t, F(p).color);
   log(`${pname(p)} produced ${Object.entries(got).map(([r, v]) => `${v} ${r}`).join(", ") || "nothing"}.`);
 }
 
@@ -2353,9 +2425,11 @@ function humanMove(p, max, opts = {}) {
         const dn = el("button", "btn", "Done moving"); dn.type = "button"; dn.addEventListener("click", finishMove);
         const ub = el("button", "btn plain", "↶ Undo"); ub.type = "button"; ub.addEventListener("click", () => { if (!moveUI.busy) undo(); });
         bb.append(dn, ub); $("prompt").hidden = false; clearHighlight();
+        moveUI.movable = new Set();
         return;
       }
       if (!left || !srcs.length) { finishMove(); return; }
+      moveUI.movable = new Set(S.units.filter(canMove).map(u => u.id));
       $("promptText").textContent = selected ? `Drop your ${unitName(selected)} on a green tile (or click one).` : `Drag a unit onto a green tile to move it. ${left} move${left > 1 ? "s" : ""} left. Yellow tiles have units that can move.`;
       const bb = $("promptBtns"); bb.replaceChildren();
       const dn = el("button", "btn plain", moved.size ? "Done moving" : "Skip"); dn.type = "button"; dn.addEventListener("click", finishMove);
@@ -2406,6 +2480,7 @@ async function performMove(p, u, t, from, human) {
     } else carryGoods = stays === 0;
   }
   if (carryGoods) { const g = goodsAt(from); for (const r of RES) { addGoods(t, r, g[r]); g[r] = 0; } }
+  if (p.ctrl !== "human" && !TEST) arrowFx(from, t, F(p).color);
   u.q = t.q; u.r = t.r;
   for (const w of carryWorkers) { w.q = t.q; w.r = t.r; }
   sfx.drop();
@@ -2696,7 +2771,9 @@ async function cpuTurn(p) {
   await pause(0.6);
   if (S.over) return;
   checkStars(p); if (S.over) return;
-  if (canBottom(p, col) && !(p.ctrl === "easy" && Math.random() < 0.3)) { await doBottom(p, col); renderAll(); await pause(0.6); }
+  let did = col.top;
+  if (canBottom(p, col) && !(p.ctrl === "easy" && Math.random() < 0.3)) { await doBottom(p, col); did += ` + ${col.bottomName}`; renderAll(); await pause(0.6); }
+  if (humans() > 0) toast(`${pname(p)}: ${did}`);
   status("");
 }
 async function cpuMove(p) {
@@ -2762,7 +2839,7 @@ function cpuBattle(pl, foe, maxC, bonus) {
 // End of game
 // =====================================================================
 async function endGame() {
-  store.del(SAVE_KEY);
+  store.del(slotKey(S.slot || 1));
   status("");
   const rows = S.players.map(p => ({ p, s: scoreOf(p) })).sort((a, b) => b.s.total - a.s.total);
   log(`Game over. ${pname(rows[0].p)} wins with ${rows[0].s.total} coins.`);
@@ -2788,8 +2865,14 @@ async function endGame() {
 // =====================================================================
 // Save / setup / menus
 // =====================================================================
-function save() { if (S && !S.over && !TEST) store.set(SAVE_KEY, JSON.stringify(S)); }
-function loadSave() { const raw = store.get(SAVE_KEY); if (!raw) return null; try { const s = JSON.parse(raw); return s && s.v === 2 && !s.over ? s : null; } catch { return null; } }
+// Three save slots; an older single save moves into slot 1.
+const SLOT_COUNT = 3;
+const slotKey = (n) => `${SAVE_KEY}-slot${n}`;
+(() => { const old = store.get(SAVE_KEY); if (old) { if (!store.get(slotKey(1))) store.set(slotKey(1), old); store.del(SAVE_KEY); } })();
+function save() { if (S && !S.over && !TEST) { S.savedAt = Date.now(); store.set(slotKey(S.slot || 1), JSON.stringify(S)); } }
+function loadSlot(n) { const raw = store.get(slotKey(n)); if (!raw) return null; try { const s = JSON.parse(raw); return s && s.v === 2 && !s.over ? s : null; } catch { return null; } }
+function ago(ms) { const m = Math.round((Date.now() - ms) / 60000); return !ms ? "" : m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; }
+let setupSlot = 1;
 const seatsCfg = [
   { on: true, ctrl: "human", faction: "brennholt" },
   { on: true, ctrl: "normal", faction: "velska" },
@@ -2823,10 +2906,32 @@ $("modeSeg").addEventListener("click", e => { const b = e.target.closest("button
 function showSetup() {
   $("setup").hidden = false;
   for (const id of ["players", "topright", "board", "log", "prompt", "cam"]) $(id).hidden = true;
-  const sv = loadSave();
-  $("continueRow").hidden = !sv;
-  if (sv) $("continueInfo").textContent = `${MODES[sv.mode].label} game, round ${sv.round}, ${sv.players.map(p => FACTIONS[p.faction].short).join(" vs ")}`;
+  renderSlots();
   renderSeats();
+}
+function renderSlots() {
+  const wrap = $("slots"); wrap.replaceChildren();
+  const saved = Array.from({ length: SLOT_COUNT }, (_, i) => loadSlot(i + 1));
+  if (saved.some(Boolean)) wrap.appendChild(el("h3", null, "Saved games"));
+  saved.forEach((sv, i) => {
+    if (!sv) return;
+    const n = i + 1, row = el("div", "slotrow");
+    const info = el("span"); info.innerHTML = `<b>Slot ${n}</b> · ${MODES[sv.mode].label} game, round ${sv.round} · ${sv.players.map(p => FACTIONS[p.faction].short).join(" vs ")}${sv.savedAt ? " · " + ago(sv.savedAt) : ""}`;
+    const go = el("button", "btn", "Continue"); go.type = "button";
+    go.addEventListener("click", () => { S = loadSlot(n); if (S) { S.slot = n; enterGame(); } });
+    const del = el("button", "btn plain", "Delete"); del.type = "button";
+    del.addEventListener("click", () => { if (del.dataset.armed) { store.del(slotKey(n)); renderSlots(); } else { del.dataset.armed = "1"; del.textContent = "Tap again to delete"; } });
+    row.append(info, go, del); wrap.appendChild(row);
+  });
+  wrap.hidden = !saved.some(Boolean);
+  const firstEmpty = saved.findIndex(x => !x);
+  if (!renderSlots.touched) setupSlot = firstEmpty >= 0 ? firstEmpty + 1 : 1;
+  const seg = $("slotSeg"); seg.replaceChildren();
+  saved.forEach((sv, i) => {
+    const b = el("button", setupSlot === i + 1 ? "on" : "", `Slot ${i + 1} · ${sv ? "replaces save" : "empty"}`); b.type = "button";
+    b.addEventListener("click", () => { setupSlot = i + 1; renderSlots.touched = true; renderSlots(); });
+    seg.appendChild(b);
+  });
 }
 new ResizeObserver(() => document.documentElement.style.setProperty("--board-h", $("board").offsetHeight + "px")).observe($("board"));
 function enterGame() {
@@ -2845,11 +2950,11 @@ function enterGame() {
 $("startBtn").addEventListener("click", () => {
   const seats = seatsCfg.filter(s => s.on).map(s => ({ ctrl: s.ctrl, faction: s.faction }));
   newGame(setupMode, seats);
+  S.slot = setupSlot; renderSlots.touched = false;
   log(`A ${MODES[setupMode].label.toLowerCase()} game begins. First to ${S.target} stars ends it.`);
   save();
   enterGame();
 });
-$("continueBtn").addEventListener("click", () => { S = loadSave(); if (S) enterGame(); });
 $("rulesBtn").addEventListener("click", () => showRules());
 $("menuBtn").addEventListener("click", async () => {
   if (!$("modal").hidden) return;
@@ -2860,6 +2965,7 @@ $("menuBtn").addEventListener("click", async () => {
       { name: "Controls", text: "Camera, dragging units and shortcuts.", value: "controls" },
       { name: `Sound: ${soundOn ? "on" : "off"}`, text: "Turn sound effects on or off.", value: "sound" },
       { name: `Computer speed: ${cpuDelay > 400 ? "normal" : "fast"}`, text: "How quickly computer players take their turns.", value: "speed" },
+      { name: `Graphics: ${gfx === "low" ? "low" : "high"}`, text: "Low graphics turns off shadows and sharpness for slower laptops and Chromebooks.", value: "gfx" },
       { name: "Quit to title", text: "Your game is saved. Continue it from the title screen.", value: "quit" },
       { name: "Back to the game", text: "", value: null }
     ], done);
@@ -2868,6 +2974,7 @@ $("menuBtn").addEventListener("click", async () => {
   if (v === "controls") showControls();
   if (v === "sound") { soundOn = !soundOn; store.set("ia-sound", soundOn ? "1" : "0"); }
   if (v === "speed") cpuDelay = cpuDelay > 400 ? 220 : 650;
+  if (v === "gfx") { gfx = gfx === "low" ? "high" : "low"; gfxChosen = true; store.set("ia-gfx", gfx); applyGraphics(); toast(`Graphics: ${gfx}`); }
   if (v === "quit") { save(); location.reload(); }
 });
 function showControls() {
@@ -2947,6 +3054,9 @@ function frame() {
     const travel = Math.hypot(want.x - pos.x, want.z - pos.z);
     if (!m.userData.dragTarget && !m.userData.lift && travel > 0.1) m.position.y += Math.abs(Math.sin(now * 12)) * Math.min(0.06, travel * 0.2);
   }
+  updateHalos(now);
+  updateFx(dt);
+  watchFps(dt);
   for (const m of trackTokens.values()) { const t = m.userData.target; if (t) m.position.lerp(t, Math.min(1, dt * 5)); }
   for (const s of smokes) {
     const k = (now * 0.25 + s.userData.off) % 1;
@@ -2981,6 +3091,7 @@ if (location.hash === "#debug") window.__ia = {
 $("loading").remove();
 applyLayout();
 if (isPhone()) sun.shadow.mapSize.set(1024, 1024);
+if (gfx === "low") { renderer.setPixelRatio(1); renderer.shadowMap.enabled = false; sun.castShadow = false; }
 resize();
 camera.position.set(0, 24, 24);
 frame();
