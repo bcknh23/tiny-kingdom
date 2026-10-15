@@ -95,6 +95,12 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--brass); ou
 .col.pick:hover { background: #fff8e8; transform: translateY(-2px); }
 .col.used { opacity: .5; }
 .col.locked { opacity: .4; }
+.netlist { display: grid; gap: 6px; max-height: 46vh; overflow: auto; }
+.seatrow { display: flex; align-items: center; gap: 8px; background: var(--paper-2); padding: 6px 8px; border-radius: 5px; font-size: 15px; }
+.seatrow i { width: 10px; height: 22px; border-radius: 3px; flex: none; }
+.seatrow b { font-family: var(--font-cond); font-size: 16px; min-width: 84px; }
+.seatrow .who { flex: 1; color: var(--ink-soft); }
+.seatrow .who.me { color: var(--ink); font-weight: 700; }
 .coach { position: fixed; left: calc(50% - var(--panel-w) / 2 - 70px); transform: translateX(-50%); bottom: calc(env(safe-area-inset-bottom, 0px) + var(--prompt-h, 50px) + 24px); width: min(440px, calc(100% - var(--panel-w) - 240px)); padding: 12px 14px; z-index: 5; display: grid; gap: 6px; border: 2px solid var(--gold, #c9a13b); }
 .coach .ch { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .coach h3 { margin: 0; font-size: 17px; }
@@ -142,6 +148,7 @@ details summary { cursor: pointer; font-family: var(--font-cond); font-weight: 7
 
 /* ---------- overlays ---------- */
 .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 20px max(16px, env(safe-area-inset-right, 0px)) 20px max(16px, env(safe-area-inset-left, 0px)); background: rgba(43, 38, 32, .45); z-index: 10; }
+#modal { z-index: 11; }
 .overlay.solid { background: radial-gradient(circle at 50% 30%, #d9d0b8, #9eae9f 70%, #6f7f76); }
 .dialog { width: min(560px, 100%); max-height: 100%; overflow-y: auto; padding: 18px 20px 20px; display: grid; gap: 12px; }
 .dialog h2 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 30px; line-height: 1; }
@@ -326,6 +333,7 @@ body { touch-action: manipulation; }
     <div class="seg" id="slotSeg"></div>
     <div class="row-btns">
       <button class="btn" id="startBtn" type="button">Start game</button>
+      <button class="btn plain" id="onlineBtn" type="button" hidden>Online game</button>
       <button class="btn plain" id="tutBtn" type="button">Tutorial game</button>
       <button class="btn plain" id="rulesBtn" type="button">How to play</button>
     </div>
@@ -2044,7 +2052,8 @@ function renderPlayers() {
   for (const p of S.players) {
     const f = F(p);
     const d = document.createElement("div"); d.className = "pl" + (p.i === S.turn ? " cur" : "");
-    d.innerHTML = `<span class="bar" style="background:${f.color}"></span><span class="nm">${f.short} <small>${p.label}</small></span><span class="stars">★ ${p.stars.length}/${S.target}</span><span class="st"></span>`;
+    d.innerHTML = `<span class="bar" style="background:${f.color}"></span><span class="nm">${f.short} <small></small></span><span class="stars">★ ${p.stars.length}/${S.target}</span><span class="st"></span>`;
+    d.querySelector(".nm small").textContent = plLabel(p);
     d.querySelector(".st").textContent = narrow ? `${p.coins} coins · ${p.power} pwr · ${p.pop} pop` : `${p.coins} coins · ${p.power} power · ${p.pop} popularity · ${territoriesOf(p)} land`;
     elp.appendChild(d);
   }
@@ -2057,9 +2066,14 @@ function renderPlayers() {
 let pickColumns = null;
 let boardMin = store.get("ia-board-min") === "1";
 let detOpen = false;
+function boardPlayer() {
+  const c = cur();
+  if (!S.online || c.uid === NET.me) return c;
+  return S.players.find(x => x.uid === NET.me) || c;
+}
 function renderBoard() {
-  const p = cur(), f = F(p), bd = $("board");
-  const secrets = p.ctrl === "human";
+  const p = boardPlayer(), f = F(p), bd = $("board");
+  const secrets = p.ctrl === "human" && (!S.online || p.uid === NET.me);
   const collapsed = boardMin && !pickColumns;
   bd.replaceChildren();
   bd.classList.toggle("min", collapsed);
@@ -2069,7 +2083,7 @@ function renderBoard() {
   bd.appendChild(head);
   const body = document.createElement("div"); body.className = "bbody";
   const who = document.createElement("div"); who.className = "who";
-  who.textContent = `${p.label}'s turn · ${BOARDS[p.board || "industrial"].name} board · ${p.coins} coins · ${workersOf(p).length} workers · ${p.mechs} machines · ${territoriesOf(p)} territories`;
+  who.textContent = `${p === cur() ? `${plLabel(p)}'s turn` : `Your board · ${F(cur()).short} is playing`} · ${BOARDS[p.board || "industrial"].name} board · ${p.coins} coins · ${workersOf(p).length} workers · ${p.mechs} machines · ${territoriesOf(p)} territories`;
   body.appendChild(who);
   const stock = document.createElement("div"); stock.className = "stock";
   for (const r of RES) { const d = document.createElement("div"); d.innerHTML = `<b>${avail(p, r)}</b><small><i style="background:${RES_COLOR[r]}"></i>${r}</small>`; stock.appendChild(d); }
@@ -2397,6 +2411,7 @@ async function pause(mult = 1) { if (cpuDelay) await sleep(cpuDelay * mult); }
 function neighborsInOrder(p) { const n = S.players.length; if (n < 2) return []; const l = S.players[(p.i + 1) % n], r = S.players[(p.i - 1 + n) % n]; return l === r ? [l] : [l, r]; }
 
 async function gameLoop() {
+  if (S.online) return netLoop();
   while (!S.over) {
     const p = cur();
     renderAll();
@@ -2405,12 +2420,16 @@ async function gameLoop() {
     checkObjectives(p);
     checkStars(p);
     if (S.over) break;
-    S.turn = (S.turn + 1) % S.players.length;
-    if (S.turn === 0) { (S.history || (S.history = [])).push(S.players.map(x => scoreOf(x).total)); S.round++; if (S.round > S.maxRounds) { S.over = true; S.endReason = `The ${S.maxRounds}-round limit was reached.`; break; } }
+    advanceTurn();
+    if (S.over) break;
     save();
   }
   save(); renderAll();
   await endGame();
+}
+function advanceTurn() {
+  S.turn = (S.turn + 1) % S.players.length;
+  if (S.turn === 0) { (S.history || (S.history = [])).push(S.players.map(x => scoreOf(x).total)); S.round++; if (S.round > S.maxRounds) { S.over = true; S.endReason = `The ${S.maxRounds}-round limit was reached.`; } }
 }
 function checkObjectives(p) {
   if (p.objDone !== false) return;
@@ -2821,7 +2840,8 @@ async function battle(att, def, t) {
   const maxCards = (pl) => Math.min(pl.cards.length, fighters(pl) + (hasMech(pl, "card1") ? 1 : 0));
   const bonus = (pl, attacking) => (attacking && hasMech(pl, "attack2") ? 2 : 0) + (hasMech(pl, "defend2") ? (attacking ? 2 : 3) : 0) + (hasMech(pl, "wall2") && units(pl).some(u => u.kind === "worker") ? 2 : 0) + (hasMech(pl, "terrain2") && (t.type === "mountain" || t.tunnel) ? 2 : 0);
   const choose = async (pl, foe, attacking) => {
-    if (pl.ctrl === "human") { if (humans() > 1) await curtainBattle(pl, foe); return humanBattle(pl, foe, t, maxCards(pl), bonus(pl, attacking)); }
+    if (pl.ctrl === "human" && S.online && pl.uid !== NET.me) return remoteBattle(pl, foe, t, maxCards(pl), bonus(pl, attacking));
+    if (pl.ctrl === "human") { if (humans() > 1 && !S.online) await curtainBattle(pl, foe); return humanBattle(pl, foe, t, maxCards(pl), bonus(pl, attacking)); }
     return cpuBattle(pl, foe, maxCards(pl), bonus(pl, attacking));
   };
   faceOff(t, att, def);
@@ -3239,7 +3259,7 @@ function awardsList() {
   return box;
 }
 async function endGame() {
-  store.del(slotKey(S.slot || 1));
+  if (!S.online) store.del(slotKey(S.slot || 1));
   S.tut = null; $("coach").hidden = true;
   status("");
   const rows = S.players.map(p => ({ p, s: scoreOf(p) })).sort((a, b) => b.s.total - a.s.total);
@@ -3274,7 +3294,7 @@ async function endGame() {
 const SLOT_COUNT = 3;
 const slotKey = (n) => `${SAVE_KEY}-slot${n}`;
 (() => { const old = store.get(SAVE_KEY); if (old) { if (!store.get(slotKey(1))) store.set(slotKey(1), old); store.del(SAVE_KEY); } })();
-function save() { if (S && !S.over && !TEST) { S.savedAt = Date.now(); store.set(slotKey(S.slot || 1), JSON.stringify(S)); } }
+function save() { if (S && !S.over && !TEST && !S.online) { S.savedAt = Date.now(); store.set(slotKey(S.slot || 1), JSON.stringify(S)); } }
 function loadSlot(n) { const raw = store.get(slotKey(n)); if (!raw) return null; try { const s = JSON.parse(raw); return s && s.v === 2 && !s.over ? s : null; } catch { return null; } }
 function ago(ms) { const m = Math.round((Date.now() - ms) / 60000); return !ms ? "" : m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; }
 let setupSlot = 1;
@@ -3342,6 +3362,282 @@ function renderSlots() {
 }
 new ResizeObserver(() => document.documentElement.style.setProperty("--board-h", $("board").offsetHeight + "px")).observe($("board"));
 new ResizeObserver(() => document.documentElement.style.setProperty("--prompt-h", $("prompt").offsetHeight + "px")).observe($("prompt"));
+// ---------- online play ----------
+// Shared games live in the page's database: games/<code> holds the lobby (seats, status) and
+// games/<code>/state/cur holds the whole game state. Only the player whose turn it is writes;
+// computer turns are played by whoever finished the turn before them. Battles against a remote
+// player ask them through games/<code>/battle/req and wait for games/<code>/battle/ans.
+const NET = { db: null, user: null, me: null, gid: null, seq: 0, updatedAt: 0, running: false, driveCpu: false, pending: null, names: {}, answered: new Set(), unsubs: [], canWrite: null };
+function plLabel(p) {
+  if (S && S.online && p.uid) return p.uid === NET.me ? "You" : NET.names[p.uid] || "Online player";
+  return p.label;
+}
+async function netInit() {
+  if (!window.claude || typeof window.claude.use !== "function") return;
+  try {
+    const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+    if (!db || !user) return;
+    const me = await user.id();
+    if (!me) return;
+    NET.db = db; NET.user = user; NET.me = me;
+    NET.canWrite = await user.can("data.write");
+    $("onlineBtn").hidden = false;
+  } catch { /* online play stays hidden */ }
+}
+async function loadNames(ids) {
+  ids = [...new Set(ids.filter(Boolean))];
+  if (!ids.length || !NET.user) return;
+  try { const ps = await NET.user.profiles(ids); for (const id of ids) NET.names[id] = (ps[id] && ps[id].name) || ""; } catch {}
+}
+const gameRef = (gid) => NET.db.doc("games/" + gid);
+const stateRef = (gid) => NET.db.doc(`games/${gid}/state/cur`);
+function newCode() { const a = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; let c = ""; for (let i = 0; i < 6; i++) c += a[Math.floor(Math.random() * a.length)]; return c; }
+function seatLine(seat, d) {
+  const f = FACTIONS[seat.faction];
+  const row = el("div", "seatrow"); const bar = el("i"); bar.style.background = f.color;
+  const who = el("span", "who" + (seat.uid === NET.me ? " me" : ""));
+  who.textContent = seat.uid ? (seat.uid === NET.me ? "You" : NET.names[seat.uid] || "Online player") : seat.ctrl === "human" ? (d.status === "lobby" ? "Waiting for a player…" : "Computer (Normal)") : `Computer (${cap1(seat.ctrl)})`;
+  row.append(bar, el("b", null, f.short), who);
+  return row;
+}
+function writeError(e) {
+  if (e && e.code === "invalid_argument") return "This page won't let you save online moves. Ask the page's owner to give you Editor access in the Share menu.";
+  if (e && e.code === "quota_exceeded") return "The online game storage is full. Delete an old game from the list and try again.";
+  return "Couldn't reach the online game. Check your connection and try again.";
+}
+async function onlineMenu() {
+  for (;;) {
+    const pick = await modal((b2, done) => {
+      b2.appendChild(el("h2", null, "Online games"));
+      b2.appendChild(el("p", "muted", "Play with friends who open this page in Claude. Everyone needs to be signed in, and the page's owner must give each friend Editor access in the Share menu. Turns are saved online, so you can close the page and come back."));
+      if (NET.canWrite === false) b2.appendChild(el("p", null, "You can watch, but you can't play yet: ask the page's owner for Editor access."));
+      const list = el("div", "netlist"); list.appendChild(el("p", "muted", "Loading games…")); b2.appendChild(list);
+      const unsub = NET.db.collection("games").orderBy("updatedAt", "desc").limit(40).onSnapshot(async snap => {
+        const games = snap.docs.map(x => ({ id: x.id, ...x.data() })).filter(g => g.seats && g.status !== "over" && Date.now() - (g.updatedAt || 0) < 21 * 864e5);
+        await loadNames(games.flatMap(g => g.seats.map(s2 => s2.uid)));
+        list.replaceChildren();
+        const shown = games.filter(g => g.seats.some(s2 => s2.uid === NET.me) || (g.status === "lobby" && g.seats.some(s2 => s2.ctrl === "human" && !s2.uid)));
+        if (!shown.length) list.appendChild(el("p", "muted", "No open games yet. Host one, then tell your friends to open this page and tap Online game."));
+        for (const g of shown) {
+          const mine = g.seats.some(s2 => s2.uid === NET.me);
+          const humansN = g.seats.filter(s2 => s2.ctrl === "human").length, filled = g.seats.filter(s2 => s2.uid).length;
+          const row = el("div", "slotrow");
+          const info = el("span"); info.appendChild(el("b", null, `Game ${g.id}`));
+          info.appendChild(document.createTextNode(` · ${MODES[g.mode] ? MODES[g.mode].label : ""} · ${g.seats.map(s2 => FACTIONS[s2.faction].short).join(", ")} · ${g.status === "lobby" ? `${filled}/${humansN} players joined` : `round ${g.round}`} · ${ago(g.updatedAt)}`));
+          row.appendChild(info);
+          const b = el("button", "btn", g.status === "play" ? "Resume" : mine ? "Open" : "Join"); b.type = "button";
+          b.disabled = NET.canWrite === false && !mine;
+          b.addEventListener("click", () => { unsub(); done({ act: g.status === "play" ? "resume" : mine ? "open" : "join", gid: g.id }); });
+          row.appendChild(b);
+          if (g.host === NET.me) {
+            const del = el("button", "btn plain", "Delete"); del.type = "button";
+            del.addEventListener("click", () => { if (del.dataset.armed) { unsub(); done({ act: "delete", gid: g.id }); } else { del.dataset.armed = "1"; del.textContent = "Tap again to delete"; } });
+            row.appendChild(del);
+          }
+          list.appendChild(row);
+        }
+      }, () => { list.replaceChildren(el("p", null, "Couldn't load online games right now.")); });
+      const host = el("button", "btn", "Host a new game"); host.type = "button"; host.disabled = NET.canWrite === false;
+      host.addEventListener("click", () => { unsub(); done({ act: "host" }); });
+      const back = el("button", "btn plain", "Back"); back.type = "button";
+      back.addEventListener("click", () => { unsub(); done(null); });
+      b2.appendChild(el("p", "muted", "Hosting uses the game length, map and nations picked on the setup screen. Seats set to Human are filled by friends who join; you take the first one."));
+      const r = el("div", "row-btns"); r.append(host, back); b2.appendChild(r);
+    });
+    if (!pick) return;
+    try {
+      if (pick.act === "delete") { await stateRef(pick.gid).delete(); await gameRef(pick.gid).delete(); continue; }
+      let gid = pick.gid;
+      if (pick.act === "host") gid = await hostGame();
+      if (pick.act === "join" && !(await joinGame(gid))) continue;
+      if (pick.act === "resume") { await netEnter(gid); return; }
+      if (!gid) continue;
+      const res = await waitingRoom(gid);
+      if (res === "play") { await netEnter(gid); return; }
+    } catch (e) { toast(writeError(e), true); }
+  }
+}
+async function hostGame() {
+  const seats = seatsCfg.filter(x => x.on).map(x => ({ faction: x.faction, ctrl: x.ctrl, uid: null }));
+  const hi = seats.findIndex(x => x.ctrl === "human");
+  if (hi < 0 || seats.length < 2) { toast("On the setup screen, pick at least 2 nations and set one to Human for yourself.", true); return null; }
+  seats[hi].uid = NET.me;
+  const gid = newCode(), t = Date.now();
+  await gameRef(gid).set({ status: "lobby", host: NET.me, mode: setupMode, map: setupMap, seats, createdAt: t, updatedAt: t, round: 0 });
+  return gid;
+}
+async function joinGame(gid) {
+  const ref = gameRef(gid);
+  const lease = await ref.acquire({ holder: NET.me, ttlMs: 4000 });
+  if (!lease.acquired) { toast("Someone else is joining that game. Try again in a moment."); return false; }
+  const d = (await ref.get()).data();
+  if (!d || d.status !== "lobby") { toast("That game has already started."); return false; }
+  if (d.seats.some(x => x.uid === NET.me)) return true;
+  const i = d.seats.findIndex(x => x.ctrl === "human" && !x.uid);
+  if (i < 0) { toast("That game is full."); return false; }
+  await ref.update({ seats: d.seats.map((x, j) => j === i ? { ...x, uid: NET.me } : x), updatedAt: Date.now() });
+  return true;
+}
+function waitingRoom(gid) {
+  return modal((b2, done) => {
+    let d = null, unsub = null;
+    const finish = (v) => { if (unsub) unsub(); done(v); };
+    const title = el("h2", null, `Game ${gid}`), note = el("p", "muted"), seatsEl = el("div", "netlist"), btns = el("div", "row-btns");
+    b2.append(title, note, seatsEl, btns);
+    const render = async () => {
+      await loadNames(d.seats.map(x => x.uid));
+      const isHost = d.host === NET.me, open = d.seats.filter(x => x.ctrl === "human" && !x.uid).length;
+      note.textContent = isHost
+        ? (open ? `Tell your friends to open this page, tap Online game and join game ${gid}. ${open} seat${open > 1 ? "s are" : " is"} still open.` : "Everyone is here. Start when you're ready!")
+        : "Waiting for the host to start the game…";
+      seatsEl.replaceChildren(...d.seats.map(x => seatLine(x, d)));
+      btns.replaceChildren();
+      if (isHost) {
+        const go = el("button", "btn", open ? "Start now (open seats play as computer)" : "Start game"); go.type = "button";
+        go.addEventListener("click", async () => { go.disabled = true; try { await startOnline(gid, d); } catch (e) { toast(writeError(e), true); go.disabled = false; } });
+        const cancel = el("button", "btn plain", "Cancel game"); cancel.type = "button";
+        cancel.addEventListener("click", async () => { try { await gameRef(gid).delete(); } catch {} finish("left"); });
+        btns.append(go, cancel);
+      } else {
+        const leave = el("button", "btn plain", "Leave"); leave.type = "button";
+        leave.addEventListener("click", async () => {
+          try { const cur2 = (await gameRef(gid).get()).data(); if (cur2) await gameRef(gid).update({ seats: cur2.seats.map(x => x.uid === NET.me ? { ...x, uid: null } : x), updatedAt: Date.now() }); } catch {}
+          finish("left");
+        });
+        btns.append(leave);
+      }
+    };
+    unsub = gameRef(gid).onSnapshot(snap => {
+      if (!snap.exists) { toast("The host cancelled that game."); finish("left"); return; }
+      d = snap.data();
+      if (d.status === "play" && d.seats.some(x => x.uid === NET.me)) { finish("play"); return; }
+      render();
+    }, () => finish("left"));
+  });
+}
+async function startOnline(gid, d) {
+  newGame(d.mode, d.seats.map(x => ({ ctrl: x.uid ? "human" : x.ctrl === "human" ? "normal" : x.ctrl, faction: x.faction })), d.map);
+  S.players.forEach((p, i) => { p.uid = d.seats[i].uid || null; });
+  S.online = { gid };
+  log(`An online ${MODES[d.mode].label.toLowerCase()} game begins. First to ${S.target} stars ends it.`);
+  const t = Date.now();
+  await stateRef(gid).set({ seq: 1, state: JSON.stringify(S), lastBy: NET.me, updatedAt: t });
+  await gameRef(gid).update({ status: "play", updatedAt: t, round: 1, turn: 0 });
+}
+async function netEnter(gid) {
+  const st = (await stateRef(gid).get()).data();
+  if (!st || !st.state) { toast("That game couldn't be loaded."); return; }
+  for (const u of NET.unsubs) u();
+  NET.unsubs = [];
+  NET.gid = gid; NET.seq = st.seq; NET.updatedAt = st.updatedAt || 0; NET.driveCpu = st.lastBy === NET.me; NET.pending = null;
+  S = JSON.parse(st.state);
+  await loadNames(S.players.map(p => p.uid));
+  enterGame();
+  NET.unsubs.push(stateRef(gid).onSnapshot(snap => { if (snap.exists) applyRemote(snap.data()); }, () => toast("Lost the connection to the online game. Reload the page to reconnect.", true)));
+  NET.unsubs.push(NET.db.doc(`games/${gid}/battle/req`).onSnapshot(snap => { if (snap.exists) answerBattle(snap.data()); }, () => {}));
+  if (!netInit.timer) netInit.timer = setInterval(() => {
+    // If a computer turn has been waiting a while (its driver left), any player takes it over.
+    if (S && S.online && !S.over && !NET.running && cur().ctrl !== "human" && Date.now() - NET.updatedAt > 25000) { NET.driveCpu = true; netLoop(); }
+  }, 8000);
+}
+function newLogLines(a, b) {
+  if (!a.length) return b;
+  const at = b.lastIndexOf(a[a.length - 1]);
+  return at >= 0 ? b.slice(at + 1) : b.slice(-3);
+}
+function applyRemote(d) {
+  if (!d || !d.state || d.seq <= NET.seq) return;
+  if (NET.running) { NET.pending = d; return; }
+  const old = S;
+  let next; try { next = JSON.parse(d.state); } catch { return; }
+  S = next; NET.seq = d.seq; NET.updatedAt = d.updatedAt || Date.now(); NET.driveCpu = d.lastBy === NET.me;
+  indexState();
+  const before = new Map(old.units.map(u => [u.id, u]));
+  for (const u of S.units) { const o = before.get(u.id); if (o && (o.q !== u.q || o.r !== u.r) && tileAt(o.q, o.r) && tileAt(u.q, u.r)) arrowFx(tileAt(o.q, o.r), tileAt(u.q, u.r), F(S.players[u.p]).color); }
+  syncUnits(); syncStructures(); syncGoods(); syncTracks(); renderAll(); renderLog();
+  for (const m of newLogLines(old.log, S.log).slice(-3)) toast(m);
+  if (S.over) { status(""); endGame(); return; }
+  netLoop();
+}
+async function pushState() {
+  for (;;) {
+    try {
+      const now = (await stateRef(NET.gid).get()).data();
+      if (now && now.seq !== NET.seq) { NET.pending = now; toast("Another player's move arrived first. Loading it."); return false; }
+      const seq = NET.seq + 1, t = Date.now();
+      NET.seq = seq; NET.updatedAt = t;
+      try { await stateRef(NET.gid).set({ seq, state: JSON.stringify(S), lastBy: NET.me, updatedAt: t }); }
+      catch (e) { NET.seq = seq - 1; throw e; }
+      await gameRef(NET.gid).update({ status: S.over ? "over" : "play", round: S.round, turn: S.turn, updatedAt: t }).catch(() => {});
+      return true;
+    } catch (e) {
+      await ask(writeError(e), [{ label: "Try again", value: 1 }]);
+    }
+  }
+}
+async function netLoop() {
+  if (NET.running || !S || !S.online) return;
+  NET.running = true;
+  try {
+    while (!S.over) {
+      const p = cur();
+      renderAll();
+      if (p.ctrl === "human" && p.uid !== NET.me) { status(`Waiting for ${plLabel(p)} (${F(p).short}) to play…`); return; }
+      if (p.ctrl !== "human" && !NET.driveCpu) { status(`Waiting for ${F(p).short} (computer)…`); return; }
+      if (p.ctrl === "human") { sfx.click(); toast("Your turn!", true); await humanTurn(p); } else await cpuTurn(p);
+      checkObjectives(p); checkStars(p);
+      if (!S.over) advanceTurn();
+      NET.driveCpu = true;
+      if (!(await pushState())) return;
+    }
+    renderAll(); status("");
+    await endGame();
+  } finally {
+    NET.running = false;
+    if (NET.pending) { const d = NET.pending; NET.pending = null; setTimeout(() => applyRemote(d), 0); }
+  }
+}
+function remoteBattle(pl, foe, t, maxC, bn) {
+  return new Promise(resolve => {
+    const rid = Math.random().toString(36).slice(2) + Date.now().toString(36);
+    let finished = false, unsub = null;
+    const finish = (v) => { if (finished) return; finished = true; if (unsub) unsub(); clearTimeout(timer); status(""); resolve(v); };
+    const auto = () => finish(cpuBattle(pl, foe, maxC, bn));
+    const timer = setTimeout(auto, 120000);
+    status(`Waiting for ${plLabel(pl)} (${F(pl).short}) to choose their battle power…`);
+    const b = el("button", "btn plain", "Let the computer choose for them"); b.type = "button"; b.addEventListener("click", auto);
+    $("promptBtns").appendChild(b);
+    NET.db.doc(`games/${NET.gid}/battle/req`).set({ rid, defUid: pl.uid, att: foe.i, def: pl.i, q: t.q, r: t.r, maxCards: maxC, bonus: bn, power: pl.power, cards: pl.cards.slice(), foePower: foe.power, foeCards: foe.cards.length, at: Date.now() }).then(() => {
+      if (finished) return;
+      unsub = NET.db.doc(`games/${NET.gid}/battle/ans`).onSnapshot(snap => {
+        const a = snap.exists && snap.data();
+        if (!a || a.rid !== rid) return;
+        // Check the answer against what the defender actually has.
+        const dial = clamp(Math.floor(Number(a.dial) || 0), 0, Math.min(7, pl.power));
+        const left = pl.cards.slice(), cards = [];
+        for (const v of Array.isArray(a.cards) ? a.cards : []) { const k = left.indexOf(v); if (k >= 0 && cards.length < maxC) { cards.push(v); left.splice(k, 1); } }
+        finish({ dial, cards });
+      }, auto);
+    }, auto);
+  });
+}
+async function answerBattle(r) {
+  if (!r || r.defUid !== NET.me || NET.answered.has(r.rid) || Math.abs(Date.now() - (r.at || 0)) > 115000) return;
+  NET.answered.add(r.rid);
+  const pl = S.players[r.def], foe = S.players[r.att], t = tileAt(r.q, r.r);
+  if (!pl || !foe || !t) return;
+  const keep = { power: pl.power, cards: pl.cards, fp: foe.power, fc: foe.cards };
+  pl.power = r.power; pl.cards = (r.cards || []).slice();
+  foe.power = r.foePower ?? foe.power; foe.cards = Array(r.foeCards ?? foe.cards.length).fill(0);
+  sfx.battle(); focusTile(t);
+  const c = await humanBattle(pl, foe, t, r.maxCards, r.bonus);
+  pl.power = keep.power; pl.cards = keep.cards; foe.power = keep.fp; foe.cards = keep.fc;
+  try { await NET.db.doc(`games/${NET.gid}/battle/ans`).set({ rid: r.rid, dial: c.dial, cards: c.cards }); }
+  catch (e) { toast(writeError(e), true); }
+}
+$("onlineBtn").addEventListener("click", () => onlineMenu());
+netInit();
+
 // ---------- tutorial ----------
 // A guided quick game. S.tut is the current step; each step can limit which actions may be picked
 // and waits for an event ("pick:move", "done" = your turn ended, "myturn" = your turn began) or a button.
@@ -3551,6 +3847,8 @@ function frame() {
 }
 if (location.hash === "#debug") window.__ia = {
   get S() { return S; },
+  get seatsCfg() { return seatsCfg; },
+  get NET() { return NET; },
   screenOf(id) { const m = unitMeshes.get(id); if (!m) return null; const v = m.position.clone(); v.y += 0.2; v.project(camera); const r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; },
   screenOfTile(q, r2) { const { x, z } = toWorld(q, r2); const v = new THREE.Vector3(x, Math.max(groundY(x, z), 0), z).project(camera); const r = renderer.domElement.getBoundingClientRect(); return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height }; },
   reach(id) { const u = S.units.find(x => x.id === id); return reachable(S.players[u.p], u).map(t => [t.q, t.r]); },
