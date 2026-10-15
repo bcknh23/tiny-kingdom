@@ -73,6 +73,20 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--brass); ou
 .cam button { height: 32px; border: 1.5px solid var(--edge); border-radius: 4px; background: #f7f0e0; cursor: pointer; font-weight: 700; font-size: 15px; line-height: 1; padding: 0; }
 .cam button:hover { background: #fff8e8; }
 .cam .wide { grid-column: span 3; font-family: var(--font-cond); font-size: 14px; letter-spacing: .03em; }
+.cam button.on { background: #e9d48f; border-color: #8a6a2a; }
+.trackcard { position: fixed; left: calc(50% - var(--panel-w) / 2 - 70px); transform: translateX(-50%); top: calc(env(safe-area-inset-top, 0px) + 14px); width: min(400px, calc(100% - var(--panel-w) - 240px)); padding: 10px 12px; z-index: 5; display: grid; gap: 6px; }
+.trackcard .th { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.trackcard h3 { margin: 0; font-size: 17px; }
+.trackcard .th button { border: 1.5px solid var(--edge); border-radius: 4px; background: #f7f0e0; cursor: pointer; font-weight: 700; padding: 2px 8px; font-size: 13px; }
+.trackcard .rows { display: grid; gap: 4px; }
+.trackcard .tr { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 8px; font-size: 14px; }
+.trackcard .tr i { width: 8px; height: 18px; border-radius: 2px; }
+.trackcard .tr b { font-family: var(--font-cond); font-size: 17px; }
+.trackcard .tr small { color: var(--ink-soft); font-size: 12px; }
+.trackcard .note { font-size: 12px; color: var(--ink-soft); }
+[data-layout^="phone"] .trackcard { transform: none; width: auto; left: max(10px, env(safe-area-inset-left, 0px)); right: calc(max(10px, env(safe-area-inset-right, 0px)) + 56px); top: calc(var(--top-h, 56px) + 8px); padding: 8px 10px; }
+[data-layout="phone-l"] .trackcard { right: calc(max(10px, env(safe-area-inset-right, 0px)) + 300px); left: calc(max(10px, env(safe-area-inset-left, 0px)) + 60px); }
+[data-layout^="phone"] .cam .trk { font-size: 11px; }
 
 /* ---------- action board ---------- */
 .board { position: fixed; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(env(safe-area-inset-top, 0px) + 62px); width: var(--panel-w); max-height: calc(100% - 84px); overflow-y: auto; padding: 0; display: grid; align-content: start; }
@@ -301,9 +315,12 @@ body { touch-action: manipulation; }
   <button type="button" class="opt" id="camDown" title="Pan down (S)">▼</button>
   <button type="button" id="camOut" title="Zoom out (F)">−</button>
   <button type="button" class="wide" id="camView">Top-down</button>
-  <button type="button" class="wide" id="camTracks">Tracks</button>
+  <button type="button" class="wide trk" id="camPower" data-track="power" title="Fly to the power track">Power</button>
+  <button type="button" class="wide trk" id="camPop" data-track="pop" title="Fly to the popularity track">Popularity</button>
+  <button type="button" class="wide trk" id="camStars" data-track="stars" title="Fly to the star track">Stars</button>
 </div>
 <div class="coach paper" id="coach" hidden></div>
+<div class="trackcard paper" id="trackCard" hidden></div>
 <div class="prompt paper" id="prompt" hidden><span class="txt" id="promptText"></span><span class="btns" id="promptBtns"></span></div>
 <div class="log paper" id="log" hidden></div>
 <div class="toasts" id="toasts"></div>
@@ -971,7 +988,7 @@ function applyLayout() {
   const changed = next !== LAYOUT;
   LAYOUT = next;
   document.documentElement.dataset.layout = LAYOUT;
-  $("camTracks").textContent = isPhone() ? "★" : "Tracks";
+  for (const [id, long, short] of [["camPower", "Power", "PWR"], ["camPop", "Popularity", "POP"], ["camStars", "Stars", "★"]]) $(id).textContent = isPhone() ? short : long;
   $("menuBtn").textContent = isPhone() ? "☰" : "Menu";
   $("menuBtn").setAttribute("aria-label", "Menu");
   $("camView").textContent = isPhone() ? (frameMap.top ? "3D" : "2D") : (frameMap.top ? "Tilted" : "Top-down");
@@ -2256,9 +2273,59 @@ $("camLeft").addEventListener("click", () => panBy(-1, 0));
 $("camRight").addEventListener("click", () => panBy(1, 0));
 $("camIn").addEventListener("click", () => zoomBy(0.8));
 $("camOut").addEventListener("click", () => zoomBy(1.25));
-$("camHome").addEventListener("click", () => frameMap(!!frameMap.top));
-$("camView").addEventListener("click", () => frameMap(!frameMap.top));
-$("camTracks").addEventListener("click", () => frameMap(true, true));
+$("camHome").addEventListener("click", () => { closeTrackView(); frameMap(!!frameMap.top); });
+$("camView").addEventListener("click", () => { closeTrackView(); frameMap(!frameMap.top); });
+for (const b of document.querySelectorAll(".cam .trk")) b.addEventListener("click", () => viewTrack(b.dataset.track));
+controls.addEventListener("start", () => { if (trackView) closeTrackView(); });
+// ---------- track views: fly the camera over one score track and list everyone's number ----------
+let trackView = null;
+function viewTrack(kind) {
+  if (!S) return;
+  if (trackView === kind) { closeTrackView(); frameMap(!!frameMap.top); return; }
+  const root = { power: trackPos.powerRoot, pop: trackPos.popRoot, stars: trackPos.starRoot }[kind];
+  if (!root) return;
+  trackView = kind;
+  root.updateMatrixWorld(true);
+  const bb = new THREE.Box3().setFromObject(root), c = bb.getCenter(new THREE.Vector3()), size = bb.getSize(new THREE.Vector3());
+  // Back the camera off until the whole track fits across the free part of the screen.
+  const vfov = camera.fov * Math.PI / 180, ins = viewInsets(), w = Math.max(200, view.clientWidth - ins.l - ins.r);
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * w / Math.max(1, view.clientHeight));
+  const dist = Math.max(7, (size.x / 2 + 0.9) / Math.tan(hfov / 2) * 1.08);
+  if (LAYOUT === "phone-l") c.z -= dist * 0.22;   // keep the track below the info card on short screens
+  camGoal = { target: c, pos: c.clone().add(new THREE.Vector3(0, dist * 0.84, dist * 0.55)), t: 0 };
+  sfx.click();
+  renderTrackCard();
+  if (isPhone()) renderBoard();
+}
+function closeTrackView() { const was = trackView; trackView = null; renderTrackCard(); if (was && S && isPhone()) renderBoard(); }
+function renderTrackCard() {
+  const card = $("trackCard");
+  for (const b of document.querySelectorAll(".cam .trk")) b.classList.toggle("on", b.dataset.track === trackView);
+  card.hidden = !trackView || !S || $("players").hidden;
+  if (card.hidden) return;
+  card.replaceChildren();
+  const title = { power: "Power", pop: "Popularity", stars: `Stars · first to ${S.target} ends the game` }[trackView];
+  const head = el("div", "th"); head.appendChild(el("h3", null, title));
+  const back = el("button", null, "Back to board"); back.type = "button";
+  back.addEventListener("click", () => { closeTrackView(); frameMap(!!frameMap.top); });
+  head.appendChild(back); card.appendChild(head);
+  const val = (p) => trackView === "power" ? p.power : trackView === "pop" ? p.pop : p.stars.length;
+  const rows = el("div", "rows");
+  for (const p of S.players.slice().sort((a, b) => val(b) - val(a))) {
+    const r = el("div", "tr"); const bar = el("i"); bar.style.background = F(p).color;
+    const nm = el("span"); nm.appendChild(el("b", null, F(p).short)); nm.appendChild(document.createTextNode(" "));
+    let extra = "";
+    if (trackView === "power") extra = p.power >= 16 ? "max · star earned" : `${16 - p.power} to the star`;
+    if (trackView === "pop") extra = p.pop >= 13 ? "top tier" : p.pop >= 7 ? "middle tier" : "low tier";
+    if (trackView === "stars") extra = p.stars.map(k => (STARS.find(x => x.key === k) || {}).short).filter(Boolean).join(", ");
+    nm.appendChild(el("small", null, extra));
+    const v = el("b", null, trackView === "power" ? `${p.power} / 16` : trackView === "pop" ? `${p.pop} / 18` : `★ ${p.stars.length} / ${S.target}`);
+    r.append(bar, nm, v); rows.appendChild(r);
+  }
+  card.appendChild(rows);
+  if (trackView === "pop") card.appendChild(el("p", "note", "Popularity sets what stars, territories and goods are worth at the end: 0–6, 7–12 and 13–18 are the three tiers."));
+  if (trackView === "power") card.appendChild(el("p", "note", "Power is spent on the battle dial. Reaching 16 earns a star."));
+}
 const keys = new Set();
 document.addEventListener("keydown", e => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
@@ -2389,7 +2456,7 @@ function boardPlayer() {
 function renderBoard() {
   const p = boardPlayer(), f = F(p), bd = $("board");
   const secrets = p.ctrl === "human" && (!S.online || p.uid === NET.me);
-  const collapsed = boardMin && !pickColumns;
+  const collapsed = (trackView && isPhone()) || (boardMin && !pickColumns);
   bd.replaceChildren();
   bd.classList.toggle("min", collapsed);
   const head = document.createElement("button"); head.type = "button"; head.className = "bhead";
@@ -2501,7 +2568,7 @@ function renderLog() {
   for (const m of S.log.slice(-14)) { const d = document.createElement("div"); d.textContent = m; lg.appendChild(d); }
   lg.scrollTop = lg.scrollHeight;
 }
-function renderAll() { renderPlayers(); renderBoard(); syncTracks(); }
+function renderAll() { renderPlayers(); renderBoard(); syncTracks(); if (trackView) renderTrackCard(); }
 function toast(msg, big = false) {
   if (TEST) return;
   const t = document.createElement("div"); t.className = "toast paper" + (big ? " big" : ""); t.textContent = msg;
@@ -2531,7 +2598,7 @@ function ask(text, buttons = [], tiles = null, color) {
 function tempMin(on) {
   // On phones, fold the board away while the player is clicking on the map.
   if (!isPhone()) return;
-  $("board").classList.toggle("min", on || (boardMin && !pickColumns));
+  $("board").classList.toggle("min", on || (trackView && isPhone()) || (boardMin && !pickColumns));
 }
 function finish(v) {
   if (!pending) return;
@@ -2797,6 +2864,13 @@ async function humanTurn(p) {
     }
   }
 }
+// Like the board game: you can always pick a section. If you can't pay for the top action you skip it,
+// and you may still do the bottom action.
+async function cantPay(p, why) {
+  const r = await ask(`${why} You can skip it and still do the bottom action, or pick another action.`, [{ label: "Skip it", value: "skip" }, { label: "Pick another action", value: "back", plain: true }]);
+  if (r.button === "back") throw BACK;
+  log(`${pname(p)} skipped the top action.`);
+}
 async function doTop(p, col) {
   const human = p.ctrl === "human";
   if (col.key === "move") {
@@ -2812,7 +2886,7 @@ async function doTop(p, col) {
     await produce(p, human ? await humanProduceTiles(p) : cpuProduceTiles(p));
   } else if (col.key === "trade") {
     const tradeCost = p.faction === "kohlmark" ? 0 : 1;
-    if (p.coins < tradeCost) { if (human) { await ask("You need 1 coin to trade.", [{ label: "Pick another action", value: 1 }]); throw BACK; } return; }
+    if (p.coins < tradeCost) { if (human) await cantPay(p, "You need 1 coin to trade."); return; }
     if (!controlled(p).length) return;
     const choice = human ? await humanGoods(p, 2 + upLv(p, "tradeRes"), "Trade", `Take ${1 + upLv(p, "tradePop")} popularity`, true) : cpuTrade(p);
     if (choice && choice.back) throw BACK;
@@ -2821,7 +2895,7 @@ async function doTop(p, col) {
     if (choice.pop) { gain(p, "pop", 1 + upLv(p, "tradePop")); log(`${pname(p)} traded for popularity.`); }
     else placeChosenGoods(p, choice.goods, "traded for");
   } else if (col.key === "bolster") {
-    if (p.coins < 1) { if (human) { await ask("You need 1 coin to bolster.", [{ label: "Pick another action", value: 1 }]); throw BACK; } return; }
+    if (p.coins < 1) { if (human) await cantPay(p, "You need 1 coin to bolster."); return; }
     const n = 2 + upLv(p, "bolster") + (p.structs.includes("armory") ? 1 : 0);
     const what = human ? (await ask("Bolster: pay 1 coin for…", [{ label: `${n} power`, value: "power", disabled: p.power >= 16 }, { label: "1 battle card", value: "card" }, BACK_BTN])).button : cpuBolster(p);
     if (what === "back") throw BACK;
@@ -2962,7 +3036,7 @@ function produceAffordable(p) {
   return !((w >= 4 && p.power < 1) || (w >= 6 && p.pop < 1) || (w >= 8 && p.coins < 1));
 }
 async function humanProduceTiles(p) {
-  if (!produceAffordable(p)) { await ask(`You can't pay the produce cost${produceCostText(p)}.`, [{ label: "Pick another action", value: 1 }]); throw BACK; }
+  if (!produceAffordable(p)) { await cantPay(p, `You can't pay the produce cost${produceCostText(p)}.`); return []; }
   const max = 2 + upLv(p, "produce"), chosen = [];
   while (chosen.length < max) {
     const options = productiveTiles(p).filter(t => !chosen.includes(t));
@@ -4220,6 +4294,7 @@ if (location.hash === "#debug") window.__ia = {
   get S() { return S; },
   get seatsCfg() { return seatsCfg; },
   get NET() { return NET; },
+  trackBox(k) { const root = { power: trackPos.powerRoot, pop: trackPos.popRoot, stars: trackPos.starRoot }[k]; root.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(root); return [b.min.toArray(), b.max.toArray(), root.position.toArray(), camGoal && camGoal.target.toArray(), camera.position.toArray(), controls.target.toArray()]; },
   world(q, r) { return toWorld(q, r); },
   walk() { syncUnits(); },
   follow(id) { const m = unitMeshes.get(id); if (!m) return; const v = m.position; camGoal = null; controls.target.set(v.x, v.y + 0.3, v.z); camera.position.set(v.x + 1.6, v.y + 1.4, v.z + 2.2); controls.update(); },
