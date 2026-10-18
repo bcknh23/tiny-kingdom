@@ -1,0 +1,515 @@
+<title>Queue Spy</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Figtree:wght@400;500;600;700;800&display=swap">
+<style>
+/* Layout: one phone-sized column on a cobalt "park sky". Each step of the game is a perforated ride ticket;
+   one big action button per screen so it works one-handed in a moving line. Single daytime look by design. */
+:root {
+  --ground: #1f3c9c;
+  --ground-2: #162d7a;
+  --ticket: #fff7e3;
+  --ticket-2: #f3e7c6;
+  --ink: #1a1d38;
+  --ink-soft: #5b5d76;
+  --coaster: #e5432d;
+  --lemon: #ffd23f;
+  --mint: #2fb894;
+  --on-ground: #eef2ff;
+  --on-ground-soft: #b7c3f0;
+  --font-display: "Bungee", Impact, "Arial Black", sans-serif;
+  --font-body: "Figtree", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  background-image: radial-gradient(circle at 20% -10%, var(--ground) 0 40%, var(--ground-2) 100%);
+  background-attachment: fixed;
+  color: var(--on-ground);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--lemon); outline-offset: 2px; }
+
+.app {
+  max-width: 460px;
+  margin: 0 auto;
+  padding-block: 18px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.logo { font-family: var(--font-display); font-size: 1.6rem; letter-spacing: .02em; line-height: 1; margin: 0; color: var(--lemon); }
+.logo span { color: var(--on-ground); }
+.round-pill { font-size: .78rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--on-ground-soft); border: 1.5px solid var(--on-ground-soft); border-radius: 99px; padding: 4px 10px; white-space: nowrap; }
+
+/* Ticket: notched sides via mask, dashed perforation near the top stub */
+.ticket {
+  background: var(--ticket);
+  color: var(--ink);
+  border-radius: 14px;
+  padding: 20px 22px 22px;
+  display: flex; flex-direction: column; gap: 14px;
+  -webkit-mask: radial-gradient(circle 11px at 0 64px, #0000 98%, #000) left / 51% 100% no-repeat,
+                radial-gradient(circle 11px at 100% 64px, #0000 98%, #000) right / 51% 100% no-repeat;
+          mask: radial-gradient(circle 11px at 0 64px, #0000 98%, #000) left / 51% 100% no-repeat,
+                radial-gradient(circle 11px at 100% 64px, #0000 98%, #000) right / 51% 100% no-repeat;
+}
+.stub { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; height: 34px; border-bottom: 2px dashed var(--ticket-2); padding-bottom: 10px; margin-bottom: 4px; }
+.stub b { font-family: var(--font-display); font-weight: 400; font-size: .95rem; color: var(--coaster); letter-spacing: .03em; }
+.stub small { font-size: .74rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+h2 { font-family: var(--font-display); font-weight: 400; font-size: 1.55rem; line-height: 1.1; margin: 0; text-wrap: balance; }
+p { margin: 0; }
+.muted { color: var(--ink-soft); }
+.label { font-size: .74rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+
+/* Buttons */
+.btn {
+  border: 0; border-radius: 12px; padding: 15px 18px; font-weight: 800; font-size: 1.05rem;
+  background: var(--coaster); color: var(--ticket); box-shadow: 0 4px 0 #9c2a1a;
+  transition: transform .08s, box-shadow .08s;
+  width: 100%;
+}
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #9c2a1a; }
+.btn:disabled { background: var(--ticket-2); color: var(--ink-soft); box-shadow: none; cursor: default; transform: none; }
+.btn.alt { background: var(--ink); color: var(--ticket); box-shadow: 0 4px 0 #000; }
+.btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 2px var(--ink); }
+.btn.ghost:active { transform: none; box-shadow: inset 0 0 0 2px var(--ink); }
+.link { background: none; border: 0; padding: 6px 0; color: var(--on-ground-soft); font-weight: 600; text-decoration: underline; text-underline-offset: 3px; align-self: center; }
+
+/* Setup */
+.players { display: flex; flex-direction: column; gap: 8px; }
+.player-row { display: flex; gap: 8px; align-items: center; }
+.player-row input { flex: 1; min-width: 0; border: 2px solid var(--ticket-2); background: #fff; border-radius: 10px; padding: 10px 12px; }
+.player-row input:focus { border-color: var(--ink); outline: none; }
+.x { flex: none; width: 42px; height: 42px; border-radius: 10px; border: 0; background: var(--ticket-2); font-size: 1.2rem; font-weight: 700; color: var(--ink-soft); }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { border: 2px solid var(--ink); background: transparent; border-radius: 99px; padding: 7px 13px; font-weight: 700; font-size: .92rem; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--lemon); }
+.toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-weight: 600; }
+.toggle input { width: 22px; height: 22px; accent-color: var(--coaster); }
+textarea { width: 100%; min-height: 96px; border: 2px solid var(--ticket-2); border-radius: 10px; padding: 10px 12px; background: #fff; resize: vertical; }
+.row2 { display: flex; gap: 10px; }
+.row2 > * { flex: 1; }
+.err { color: var(--coaster); font-weight: 700; font-size: .92rem; }
+
+/* Deal / reveal */
+.pass-name { font-family: var(--font-display); font-size: clamp(2rem, 11vw, 2.8rem); line-height: 1; color: var(--coaster); word-break: break-word; }
+.peek {
+  position: relative; border-radius: 14px; min-height: 210px; display: grid; place-items: center; text-align: center;
+  background: repeating-linear-gradient(-45deg, var(--ink) 0 14px, #262a4d 14px 28px);
+  color: var(--lemon); user-select: none; -webkit-user-select: none; touch-action: none; border: 0; width: 100%; padding: 18px;
+  -webkit-touch-callout: none;
+}
+.peek .cover { font-family: var(--font-display); font-size: 1.15rem; line-height: 1.25; }
+.peek .cover small { display: block; font-family: var(--font-body); font-weight: 600; font-size: .85rem; color: var(--on-ground-soft); margin-top: 6px; }
+.peek .face { display: none; }
+.peek.open { background: var(--lemon); color: var(--ink); }
+.peek.open.spy { background: var(--coaster); color: var(--ticket); }
+.peek.open .cover { display: none; }
+.peek.open .face { display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.face .cat { font-size: .74rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; opacity: .75; }
+.face .word { font-family: var(--font-display); font-size: clamp(1.7rem, 9vw, 2.4rem); line-height: 1.05; text-wrap: balance; }
+.face .tip { font-weight: 600; font-size: .92rem; max-width: 30ch; }
+
+/* Play */
+.order { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; counter-reset: turn; }
+.order li { counter-increment: turn; }
+.order button {
+  width: 100%; display: flex; align-items: center; gap: 12px; text-align: left;
+  border: 0; border-radius: 10px; background: var(--ticket-2); padding: 10px 12px; font-weight: 700;
+}
+.order button::before { content: counter(turn); font-family: var(--font-display); font-weight: 400; color: var(--coaster); width: 1.4em; font-variant-numeric: tabular-nums; }
+.order button span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.order button small { font-weight: 600; color: var(--ink-soft); font-size: .8rem; }
+.steps { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; }
+.timer { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: var(--ink); color: var(--lemon); border-radius: 12px; padding: 10px 14px; }
+.timer b { font-family: var(--font-display); font-weight: 400; font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.timer button { border: 0; background: var(--lemon); color: var(--ink); border-radius: 8px; padding: 8px 12px; font-weight: 800; }
+
+/* Vote + guess grids */
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pick { border: 2px solid var(--ink); background: transparent; border-radius: 12px; padding: 13px 10px; font-weight: 800; overflow-wrap: anywhere; min-height: 56px; }
+.pick[aria-pressed="true"] { background: var(--ink); color: var(--lemon); }
+
+/* Result */
+.banner { font-family: var(--font-display); font-size: clamp(1.8rem, 9vw, 2.3rem); line-height: 1.05; text-wrap: balance; }
+.banner.win-spy { color: var(--coaster); }
+.banner.win-crew { color: var(--mint); }
+.reveal-line { display: flex; flex-direction: column; gap: 2px; background: var(--ticket-2); border-radius: 10px; padding: 10px 12px; }
+.reveal-line strong { font-size: 1.15rem; overflow-wrap: anywhere; }
+.scores { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.scores li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 2px; border-bottom: 1.5px dashed var(--ticket-2); font-weight: 600; }
+.scores li:last-child { border-bottom: 0; }
+.scores li span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.scores .pts { font-variant-numeric: tabular-nums; font-weight: 800; }
+.scores .gain { color: var(--mint); font-weight: 800; margin-right: 8px; }
+.scores li.lead span:first-child::after { content: " ★"; color: var(--lemon); -webkit-text-stroke: .5px var(--ink); }
+
+.foot { color: var(--on-ground-soft); font-size: .85rem; text-align: center; }
+.how { color: var(--on-ground); background: rgba(255,255,255,.07); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; font-size: .95rem; }
+.how h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 1rem; color: var(--lemon); }
+.how ol { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; }
+
+.screen { animation: slide .22s ease-out; }
+@keyframes slide { from { transform: translateY(8px); opacity: .6; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .screen { animation: none; } .btn { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <h1 class="logo">Queue<span>Spy</span></h1>
+    <span class="round-pill" id="roundPill" hidden></span>
+  </header>
+  <main id="main"></main>
+</div>
+
+<script>
+const CATS = {
+  rides: { name: "Rides", words: ["Roller coaster", "Ferris wheel", "Log flume", "Bumper cars", "Carousel", "Haunted house", "Drop tower", "Teacups", "Pirate ship", "Go-karts", "Lazy river", "Swing ride", "Mirror maze", "Water slide", "Kiddie train", "Sky gondola", "4D theater", "River rapids", "Wooden coaster", "Spinning coaster", "Wave pool", "Zip line"] },
+  food: { name: "Park food", words: ["Churro", "Funnel cake", "Cotton candy", "Corn dog", "Turkey leg", "Popcorn", "Snow cone", "Soft pretzel", "Ice cream cone", "Lemonade", "Nachos", "Pizza slice", "Caramel apple", "Slushie", "Hot dog", "Kettle corn", "Frozen banana", "Giant pickle", "Mini donuts", "Refill cup"] },
+  line: { name: "Stuff in line", words: ["Height sign", "Wait time sign", "Misting fan", "Safety video", "Lap bar", "Locker", "Ride photo", "Gift shop", "Stroller parking", "Rain poncho", "Sunscreen", "Selfie stick", "Fanny pack", "Park map", "Water fountain", "Skip-the-line lane", "Switchback rail", "Loose articles bin", "Phone at 4%", "Matching family shirts"] },
+  people: { name: "Park people", words: ["Mascot costume", "Ride operator", "Street performer", "Balloon seller", "Face painter", "Caricature artist", "Parade float", "Fireworks show", "Juggler", "Stilt walker", "Security guard", "Park photographer", "Tour group", "Birthday kid", "Screaming teenager", "Grandpa on a bench", "Sleeping toddler", "First date", "Lost kid", "Season pass holder"] },
+};
+const MIX = "mix", CUSTOM = "custom";
+const KEY = "queue-spy-v1";
+
+let S;
+const $main = document.getElementById("main");
+const $pill = document.getElementById("roundPill");
+
+function fresh() {
+  return { players: ["", "", "", ""].map(n => ({ name: n, score: 0 })), cat: MIX, hint: true, timer: true, custom: "", used: [], roundNo: 0, round: null, phase: "setup" };
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.players) return s; } catch (e) {} return null; }
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const names = () => S.players.map(p => p.name);
+const spyCountFor = n => n >= 7 ? 2 : 1;
+
+function customWords() { return S.custom.split(/\n|,/).map(w => w.trim()).filter(Boolean); }
+function poolFor(cat) {
+  if (cat === CUSTOM) return { name: "Your words", words: customWords() };
+  return CATS[cat];
+}
+
+function newRound() {
+  let catKey = S.cat === MIX ? shuffle(Object.keys(CATS))[0] : S.cat;
+  const pool = poolFor(catKey);
+  let options = pool.words.filter(w => !S.used.includes(w));
+  if (!options.length) { S.used = S.used.filter(w => !pool.words.includes(w)); options = pool.words.slice(); }
+  const word = shuffle(options)[0];
+  S.used.push(word);
+  const n = S.players.length;
+  const spies = shuffle([...Array(n).keys()]).slice(0, spyCountFor(n));
+  const start = Math.floor(Math.random() * n);
+  const order = [...Array(n).keys()].map(i => (start + i) % n);
+  S.roundNo++;
+  S.round = { word, catKey, catName: pool.name, spies, order, deal: 0, seen: false, accused: null, guess: null, gains: {} };
+  S.phase = "deal";
+}
+
+/* ---------- Screens ---------- */
+
+function render() {
+  stopTimer();
+  $pill.hidden = !S.round || S.phase === "setup";
+  if (S.round) $pill.textContent = "Round " + S.roundNo;
+  const fn = { setup: viewSetup, deal: viewDeal, play: viewPlay, vote: viewVote, guess: viewGuess, result: viewResult }[S.phase];
+  $main.innerHTML = "";
+  const el = document.createElement("div");
+  el.className = "screen";
+  el.style.display = "flex"; el.style.flexDirection = "column"; el.style.gap = "16px";
+  $main.appendChild(el);
+  fn(el);
+  save();
+  window.scrollTo(0, 0);
+}
+
+function viewSetup(el) {
+  const catChips = [[MIX, "Mix it up"], ...Object.entries(CATS).map(([k, c]) => [k, c.name]), [CUSTOM, "My own words"]];
+  el.innerHTML = `
+    <section class="ticket">
+      <div class="stub"><b>Admit 3–10</b><small>Pass &amp; play</small></div>
+      <h2>Who's in line?</h2>
+      <div class="players" id="players"></div>
+      <button class="btn ghost" id="addP" type="button">+ Add player</button>
+      <div class="label">Secret words</div>
+      <div class="chips" id="cats">${catChips.map(([k, n]) => `<button class="chip" type="button" data-cat="${k}" aria-pressed="${S.cat === k}">${esc(n)}</button>`).join("")}</div>
+      <div id="customBox" ${S.cat === CUSTOM ? "" : "hidden"}>
+        <textarea id="customWords" placeholder="One per line. Try things you can see from the line: that giant pretzel sign, the red balloon, the guy in the cape...">${esc(S.custom)}</textarea>
+        <p class="muted" style="font-size:.85rem;margin-top:4px">Add at least 4 so the Spy's final guess isn't too easy.</p>
+      </div>
+      <label class="toggle" for="hint">Tell the Spy the category <input type="checkbox" id="hint" ${S.hint ? "checked" : ""}></label>
+      <label class="toggle" for="timerOpt">Clue timer (2 min) <input type="checkbox" id="timerOpt" ${S.timer ? "checked" : ""}></label>
+      <p class="err" id="err" hidden></p>
+      <button class="btn" id="go" type="button">Deal the cards</button>
+    </section>
+    <section class="how">
+      <h3>How it works</h3>
+      <ol>
+        <li>Everyone secretly sees the same word, except the Spy, who doesn't.</li>
+        <li>Go around twice. Each person says one word about the secret.</li>
+        <li>On “3, 2, 1” everyone points at who they think the Spy is.</li>
+        <li>If the Spy gets caught, they get one guess at the word to steal the win.</li>
+      </ol>
+      <p style="color:var(--on-ground-soft);font-size:.88rem">With 7 or more players there are two Spies, and they don't know about each other.</p>
+    </section>`;
+
+  const $players = el.querySelector("#players");
+  const drawPlayers = () => {
+    $players.innerHTML = S.players.map((p, i) => `
+      <div class="player-row">
+        <input id="p${i}" data-i="${i}" maxlength="16" autocomplete="off" placeholder="Player ${i + 1}" value="${esc(p.name)}" aria-label="Player ${i + 1} name">
+        <button class="x" type="button" data-rm="${i}" aria-label="Remove player ${i + 1}" ${S.players.length <= 3 ? "disabled" : ""}>×</button>
+      </div>`).join("");
+  };
+  drawPlayers();
+  $players.addEventListener("input", e => { const i = e.target.dataset.i; if (i != null) { S.players[i].name = e.target.value; save(); } });
+  $players.addEventListener("click", e => {
+    const i = e.target.dataset.rm; if (i == null || S.players.length <= 3) return;
+    S.players.splice(+i, 1); drawPlayers(); save();
+  });
+  el.querySelector("#addP").onclick = () => {
+    if (S.players.length >= 10) return;
+    S.players.push({ name: "", score: 0 }); drawPlayers(); save();
+    el.querySelector(`#p${S.players.length - 1}`).focus();
+  };
+  el.querySelector("#cats").onclick = e => {
+    const k = e.target.dataset.cat; if (!k) return;
+    S.cat = k;
+    el.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c.dataset.cat === k));
+    el.querySelector("#customBox").hidden = k !== CUSTOM;
+    save();
+  };
+  el.querySelector("#customWords").oninput = e => { S.custom = e.target.value; save(); };
+  el.querySelector("#hint").onchange = e => { S.hint = e.target.checked; save(); };
+  el.querySelector("#timerOpt").onchange = e => { S.timer = e.target.checked; save(); };
+  el.querySelector("#go").onclick = () => {
+    const $err = el.querySelector("#err");
+    S.players.forEach((p, i) => { p.name = p.name.trim() || "Player " + (i + 1); });
+    const lower = names().map(n => n.toLowerCase());
+    let msg = "";
+    if (S.players.length < 3) msg = "You need at least 3 players.";
+    else if (new Set(lower).size !== lower.length) msg = "Two players have the same name. Give one a nickname.";
+    else if (S.cat === CUSTOM && customWords().length < 4) msg = "Add at least 4 of your own words, or pick a different set.";
+    if (msg) { $err.textContent = msg; $err.hidden = false; drawPlayers(); return; }
+    newRound(); render();
+  };
+}
+
+function peekCard(idx, onSeen) {
+  const r = S.round, isSpy = r.spies.includes(idx);
+  const face = isSpy
+    ? `<span class="cat">${S.hint ? "Category: " + esc(r.catName) : "Secret identity"}</span><span class="word">You're the Spy</span><span class="tip">Listen to the clues, blend in, and work out the word.</span>`
+    : `<span class="cat">${esc(r.catName)}</span><span class="word">${esc(r.word)}</span><span class="tip">One of you doesn't know this. Don't make it too obvious.</span>`;
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "peek" + (isSpy ? " spy" : "");
+  b.setAttribute("aria-label", "Hold to see your card");
+  b.innerHTML = `<span class="cover">Hold to peek<small>Let go to hide it again</small></span><span class="face">${face}</span>`;
+  const open = e => { e.preventDefault(); b.classList.add("open"); onSeen && onSeen(); };
+  const close = () => b.classList.remove("open");
+  b.addEventListener("pointerdown", open);
+  ["pointerup", "pointercancel", "pointerleave", "blur"].forEach(t => b.addEventListener(t, close));
+  b.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") open(e); });
+  b.addEventListener("keyup", close);
+  b.addEventListener("contextmenu", e => e.preventDefault());
+  return b;
+}
+
+function viewDeal(el) {
+  const r = S.round, n = S.players.length, idx = r.deal;
+  el.innerHTML = `
+    <section class="ticket">
+      <div class="stub"><b>Your card</b><small>${idx + 1} of ${n}</small></div>
+      <p class="label">Pass the phone to</p>
+      <div class="pass-name">${esc(S.players[idx].name)}</div>
+      <p class="muted">Everyone else, look away.</p>
+      <div id="peekSlot"></div>
+      <button class="btn" id="next" type="button" ${r.seen ? "" : "disabled"}>${idx + 1 < n ? "Got it. Pass it on" : "Got it. Start the clues"}</button>
+    </section>`;
+  const $next = el.querySelector("#next");
+  el.querySelector("#peekSlot").appendChild(peekCard(idx, () => { if (!r.seen) { r.seen = true; $next.disabled = false; save(); } }));
+  $next.onclick = () => {
+    r.seen = false;
+    if (r.deal + 1 < n) r.deal++; else S.phase = "play";
+    render();
+  };
+}
+
+let timerId = null;
+function stopTimer() { if (timerId) { clearInterval(timerId); timerId = null; } }
+
+function viewPlay(el) {
+  const r = S.round;
+  el.innerHTML = `
+    <section class="ticket">
+      <div class="stub"><b>Clue time</b><small>${S.players.length} players</small></div>
+      <h2>${esc(S.players[r.order[0]].name)} goes first</h2>
+      <ol class="steps">
+        <li>Go around in this order. Say <strong>one word</strong> about the secret.</li>
+        <li>Then go around once more.</li>
+        <li>Keep it vague enough that the Spy can't guess it.</li>
+      </ol>
+      ${S.timer ? `<div class="timer"><span>Clue timer</span><b id="clock">2:00</b><button type="button" id="clockBtn">Start</button></div>` : ""}
+      <ol class="order" id="order">${r.order.map(i => `<li><button type="button" data-i="${i}"><span>${esc(S.players[i].name)}</span><small>forgot? peek</small></button></li>`).join("")}</ol>
+      <div id="repeek"></div>
+      <button class="btn" id="vote" type="button">Everyone point: who's the Spy?</button>
+    </section>`;
+
+  const $re = el.querySelector("#repeek");
+  el.querySelector("#order").onclick = e => {
+    const btn = e.target.closest("button[data-i]"); if (!btn) return;
+    const i = +btn.dataset.i;
+    $re.innerHTML = `<p class="label" style="margin-bottom:8px">Only ${esc(S.players[i].name)} should look</p>`;
+    $re.appendChild(peekCard(i));
+    const done = document.createElement("button");
+    done.type = "button"; done.className = "link"; done.style.color = "var(--ink-soft)"; done.style.display = "block"; done.style.margin = "6px auto 0";
+    done.textContent = "Close";
+    done.onclick = () => { $re.innerHTML = ""; };
+    $re.appendChild(done);
+  };
+
+  if (S.timer) {
+    let left = 120, running = false;
+    const $c = el.querySelector("#clock"), $b = el.querySelector("#clockBtn");
+    const draw = () => { $c.textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0"); };
+    $b.onclick = () => {
+      if (left === 0) { left = 120; draw(); }
+      running = !running;
+      $b.textContent = running ? "Pause" : "Start";
+      if (running) timerId = setInterval(() => {
+        left = Math.max(0, left - 1); draw();
+        if (left === 0) { stopTimer(); running = false; $b.textContent = "Again"; try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {} }
+      }, 1000);
+      else stopTimer();
+    };
+  }
+  el.querySelector("#vote").onclick = () => { S.phase = "vote"; render(); };
+}
+
+function viewVote(el) {
+  const r = S.round;
+  el.innerHTML = `
+    <section class="ticket">
+      <div class="stub"><b>The vote</b><small>3 · 2 · 1</small></div>
+      <h2>Count down, then everyone points</h2>
+      <p class="muted">Tap whoever got the most fingers. Tie? Do a quick re-point between just those players.</p>
+      <div class="grid" id="picks">${S.players.map((p, i) => `<button class="pick" type="button" data-i="${i}" aria-pressed="${r.accused === i}">${esc(p.name)}</button>`).join("")}</div>
+      <button class="btn" id="lock" type="button" ${r.accused == null ? "disabled" : ""}>Reveal the Spy</button>
+      <button class="btn ghost" id="back" type="button">Back to clues</button>
+    </section>`;
+  const $lock = el.querySelector("#lock");
+  el.querySelector("#picks").onclick = e => {
+    const b = e.target.closest("[data-i]"); if (!b) return;
+    r.accused = +b.dataset.i;
+    el.querySelectorAll(".pick").forEach(x => x.setAttribute("aria-pressed", +x.dataset.i === r.accused));
+    $lock.disabled = false; save();
+  };
+  el.querySelector("#back").onclick = () => { S.phase = "play"; render(); };
+  $lock.onclick = () => {
+    if (r.spies.includes(r.accused)) {
+      const pool = poolFor(r.catKey).words.filter(w => w !== r.word);
+      r.options = shuffle([r.word, ...shuffle(pool).slice(0, 7)]);
+      S.phase = "guess";
+    } else { score(); S.phase = "result"; }
+    render();
+  };
+}
+
+function viewGuess(el) {
+  const r = S.round, spy = S.players[r.accused].name;
+  el.innerHTML = `
+    <section class="ticket">
+      <div class="stub"><b>Caught!</b><small>Last chance</small></div>
+      <h2>${esc(spy)} was a Spy</h2>
+      <p class="muted">Hand the phone to ${esc(spy)}. Pick the secret word to steal the win.</p>
+      <div class="grid" id="opts">${r.options.map((w, i) => `<button class="pick" type="button" data-i="${i}">${esc(w)}</button>`).join("")}</div>
+    </section>`;
+  el.querySelector("#opts").onclick = e => {
+    const b = e.target.closest("[data-i]"); if (!b) return;
+    r.guess = r.options[+b.dataset.i];
+    score(); S.phase = "result"; render();
+  };
+}
+
+function score() {
+  const r = S.round, g = {};
+  const add = (i, n) => { g[i] = (g[i] || 0) + n; S.players[i].score += n; };
+  if (!r.spies.includes(r.accused)) { r.outcome = "escaped"; r.spies.forEach(i => add(i, 2)); }
+  else if (r.guess === r.word) { r.outcome = "stole"; add(r.accused, 2); }
+  else { r.outcome = "caught"; S.players.forEach((_, i) => { if (!r.spies.includes(i)) add(i, 1); }); }
+  r.gains = g;
+}
+
+function viewResult(el) {
+  const r = S.round;
+  const spyNames = r.spies.map(i => S.players[i].name);
+  const accused = S.players[r.accused].name;
+  const spyWord = r.spies.length > 1 ? "Spies" : "Spy";
+  const head = {
+    escaped: [`The ${spyWord.toLowerCase()} got away`, "win-spy", `You pointed at ${accused}, who knew the word all along.`],
+    stole: [`${accused} stole the win`, "win-spy", `Caught, but they guessed “${r.word}”.`],
+    caught: ["Spy caught!", "win-crew", `${accused} guessed “${r.guess}”. Wrong.`],
+  }[r.outcome];
+  const top = Math.max(...S.players.map(p => p.score));
+  const ranked = S.players.map((p, i) => ({ ...p, i })).sort((a, b) => b.score - a.score);
+  el.innerHTML = `
+    <section class="ticket">
+      <div class="stub"><b>Round ${S.roundNo}</b><small>Results</small></div>
+      <div class="banner ${head[1]}">${esc(head[0])}</div>
+      <p class="muted">${esc(head[2])}</p>
+      <div class="row2">
+        <div class="reveal-line"><span class="label">The word</span><strong>${esc(r.word)}</strong></div>
+        <div class="reveal-line"><span class="label">${spyWord}</span><strong>${esc(spyNames.join(" & "))}</strong></div>
+      </div>
+      <div class="label">Scoreboard</div>
+      <ul class="scores">${ranked.map(p => `<li class="${p.score === top && top > 0 ? "lead" : ""}"><span>${esc(p.name)}</span><span>${r.gains[p.i] ? `<span class="gain">+${r.gains[p.i]}</span>` : ""}<span class="pts">${p.score}</span></span></li>`).join("")}</ul>
+      <button class="btn" id="again" type="button">Next round</button>
+      <button class="btn ghost" id="edit" type="button">Change players or words</button>
+    </section>
+    <p class="foot">Spy escapes: +2 to the Spy · Spy caught: +1 to everyone else · Caught Spy guesses the word: +2 to the Spy</p>`;
+  el.querySelector("#again").onclick = () => { newRound(); render(); };
+  el.querySelector("#edit").onclick = () => { S.phase = "setup"; S.round = null; render(); };
+}
+
+/* Footer control so a group can wipe scores and start over */
+function addReset() {
+  const b = document.createElement("button");
+  b.type = "button"; b.className = "link"; b.id = "reset"; b.textContent = "New game";
+  let armed = false, t;
+  b.onclick = () => {
+    if (!armed) { armed = true; b.textContent = "Tap again to clear scores and players"; t = setTimeout(() => { armed = false; b.textContent = "New game"; }, 3000); return; }
+    clearTimeout(t); armed = false; b.textContent = "New game";
+    S = fresh(); render();
+  };
+  document.querySelector(".app").appendChild(b);
+}
+
+/* Keep the screen on while playing, where the browser allows it */
+async function wake() { try { await navigator.wakeLock?.request("screen"); } catch (e) {} }
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") wake(); });
+
+function start(data) {
+  S = (data && data.players) ? data : (load() || fresh());
+  addReset();
+  render();
+  wake();
+}
+window.claude?.hot?.snapshot?.(() => S);
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
