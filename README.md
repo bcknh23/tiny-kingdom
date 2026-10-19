@@ -17,3 +17,7 @@ Drag to turn the camera, scroll or pinch to zoom, and right-drag or two-finger d
 - [simplex-noise](https://github.com/jwagner/simplex-noise.js) for island generation
 
 Everything is in `index.html`. The game loads three.js and simplex-noise from cdn.jsdelivr.net.
+
+## Also in this repo
+
+- [`crypto-paper-bot/`](crypto-paper-bot/README.md): a Python crypto **paper-trading** bot (backtester, simulated live trading, Streamlit dashboard). No real orders.

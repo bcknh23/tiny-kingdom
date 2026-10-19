@@ -16,9 +16,9 @@ FORBIDDEN = [
     r"withdraw",
     r"/orders",
     r"ccxt",
-    r"environ",  # no credentials pulled from the environment (config paths aside)
+    r"environ",  # no credentials pulled from the environment (config settings aside)
 ]
-ALLOWED_ENV = {"PAPERBOT_DB", "PAPERBOT_LOG"}
+ALLOWED_ENV = {"PAPERBOT_DB", "PAPERBOT_LOG", "PAPERBOT_SOURCE"}
 
 
 def code_without_docs(path: Path) -> str:

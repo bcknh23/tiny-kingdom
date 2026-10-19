@@ -1,6 +1,6 @@
 numpy>=1.26
 pandas>=2.1
 requests>=2.31
-streamlit>=1.36
+streamlit>=1.46
 plotly>=5.20
 pytest>=8.0

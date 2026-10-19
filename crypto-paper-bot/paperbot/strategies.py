@@ -74,6 +74,9 @@ class MACrossover(Strategy):
             index=df.index,
         )
 
+    def label(self) -> str:
+        return f"{self.ma_type.upper()} {self.fast}/{self.slow} crossover"
+
     def target_position(self, df: pd.DataFrame) -> pd.Series:
         ind = self.indicators(df)
         fast, slow = ind.iloc[:, 0], ind.iloc[:, 1]
@@ -101,6 +104,9 @@ class RSIReversion(Strategy):
 
     def indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame({f"rsi_{self.period}": rsi(df["close"], self.period)}, index=df.index)
+
+    def label(self) -> str:
+        return f"RSI({self.period}) buy<{self.oversold:g} sell>{self.overbought:g}"
 
     def target_position(self, df: pd.DataFrame) -> pd.Series:
         r = self.indicators(df).iloc[:, 0]
@@ -148,6 +154,10 @@ class TrendFilter(Strategy):
         if self.base is None:
             return allowed.rename("target")
         return (self.base.target_position(df) * allowed).rename("target")
+
+    def label(self) -> str:
+        trend = f"close > {self.ma_type.upper()}{self.period}"
+        return f"{self.base.label()} + trend filter ({trend})" if self.base else f"Trend: long while {trend}"
 
     def to_config(self) -> dict[str, Any]:
         return {
